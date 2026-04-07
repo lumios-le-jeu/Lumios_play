@@ -1,6 +1,10 @@
 // ─── Utility Functions ─────────────────────────────────────────────────────────
 
-/** Haversine distance in km — same formula as QRGAME server.js */
+import type { RankTier } from './types';
+import { getTierConfig } from './types';
+import { fromGlobalStep } from './ranking';
+
+/** Haversine distance in km */
 export function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
   const R = 6371;
@@ -44,7 +48,7 @@ export function nextPowerOfTwo(n: number): number {
   return p;
 }
 
-/** Calculate ELO change */
+/** Calculate ELO change (legacy — kept for server compat) */
 export function calcEloChange(
   playerElo: number,
   opponentElo: number,
@@ -59,6 +63,12 @@ export function calcEloChange(
 /** Format ELO change for display */
 export function formatEloChange(change: number): string {
   return change >= 0 ? `+${change}` : `${change}`;
+}
+
+/** Format step change for display */
+export function formatStepChange(change: number): string {
+  if (change === 0) return '0';
+  return change > 0 ? `+${change} étape${change > 1 ? 's' : ''}` : `${change} étape${Math.abs(change) > 1 ? 's' : ''}`;
 }
 
 /** Format date */
@@ -114,4 +124,33 @@ export function validatePseudo(pseudo: string): string | null {
 export function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength - 1) + '…';
+}
+
+// ─── RANK DISPLAY HELPERS ───────────────────────────────────────────────────────
+
+/** Nom du rang (ex: "Bronze 4", "Or 2", "Mythique") */
+export function getRankDisplayName(tier: RankTier, rankStep: number): string {
+  if (tier === 'mythic') return 'Mythique';
+  const info = fromGlobalStep(rankStep);
+  const cfg = getTierConfig(info.tier);
+  return `${cfg.name} ${info.rank}`;
+}
+
+/** Compare deux rangs : retourne la différence (positif = a est plus fort) */
+export function compareRanks(
+  a: { tier: RankTier; rankStep: number },
+  b: { tier: RankTier; rankStep: number }
+): number {
+  return a.rankStep - b.rankStep;
+}
+
+/** Génère un PIN à 4 chiffres */
+export function generatePin(): string {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+/** Valide un PIN */
+export function validatePin(pin: string): string | null {
+  if (!/^\d{4}$/.test(pin)) return 'Le PIN doit contenir 4 chiffres';
+  return null;
 }

@@ -69,6 +69,18 @@ export default function FindGameModal({ profile, onClose }: FindGameModalProps) 
 
   const handleJoin = (id: string) => {
     setJoining(id);
+    const socket = getSocket();
+    socket.emit('join-lobby', { 
+      lobbyId: id, 
+      profileId: profile.id, 
+      pseudo: profile.pseudo, 
+      elo: profile.elo,
+      rankTier: profile.rankTier,
+      rankStep: profile.rankStep
+    });
+    // On laisse la modal ouverte ou on redirige vers un futur LobbyView ?
+    // Pour l'instant on simule le succès et on ferme comme avant, 
+    // mais le socket est bien envoyé.
     setTimeout(() => { onClose(); }, 1500);
   };
 

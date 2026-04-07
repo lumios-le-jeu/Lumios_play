@@ -1,46 +1,48 @@
 @echo off
-title LUMIOS PLAY — SERVEUR + TUNNEL
+title LUMIOS PLAY - SERVEUR ET TUNNEL
 color 0B
 
 echo.
 echo  =====================================================
-echo       LUMIOS PLAY — DEMARRAGE DU SERVEUR
+echo       LUMIOS PLAY - DEMARRAGE DU SERVEUR
 echo  =====================================================
 echo.
 
-:: 1. Build frontend (si necessaire)
-echo  [1/3] Verification du build frontend...
-if not exist "public\client\index.html" (
-    echo  Build manquant, build en cours...
-    call npm run build
-    echo  Build OK !
+:: 1. Charger les variables d'environnement depuis le .env
+if exist ".env" (
+    for /f "usebackq tokens=1,2 delims==" %%A in (".env") do (
+        set "%%A=%%B"
+    )
 ) else (
-    echo  Build deja present.
+    echo [ERREUR] Fichier .env manquant !
+    pause
+    exit
 )
 
-echo.
-echo  [2/3] Demarrage du serveur Node.js (port 3000)...
-start "Lumios Play - Serveur" /B node server.cjs
-timeout /t 2 /nobreak > nul
-echo  Serveur demarre en tache de fond.
-
-echo.
-echo  [3/3] Demarrage du Tunnel Cloudflare...
-echo  Remplacez le token ci-dessous par le votre (voir CLOUDFLARE_GUIDE.md)
-echo.
-
-:: Token Cloudflare — A REMPLACER par votre token
-set CLOUDFLARE_TOKEN=VOTRE_TOKEN_CLOUDFLARE_ICI
-
-:: Chemin vers cloudflared (winget)
+:: 2. Chemin vers cloudflared
 set CLOUDFLARED=cloudflared
 if exist "C:\Users\%USERNAME%\AppData\Local\Microsoft\WinGet\Packages\Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe\cloudflared.exe" (
     set CLOUDFLARED="C:\Users\%USERNAME%\AppData\Local\Microsoft\WinGet\Packages\Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe\cloudflared.exe"
 )
 
-echo  Demarrage du tunnel...
-%CLOUDFLARED% tunnel run --token %CLOUDFLARE_TOKEN%
+:: 3. Nettoyage et Build frontend (FORCÉ pour être sûr)
+echo [1/3] Nettoyage et construction du frontend...
+if exist "public\client" rd /s /q "public\client"
+call npm run build
+
+:: 4. Demarrage du serveur Node.js sur le port 3001
+echo.
+echo [2/3] Demarrage du serveur Node.js...
+start "Lumios - Serveur" cmd /k "title LUMIOS-SERVER && node server.cjs"
+timeout /t 2 /nobreak >nul
+
+:: 5. Lancement du tunnel Cloudflare
+echo [3/3] Connexion au tunnel...
+echo.
+"%CLOUDFLARED%" tunnel run --token %CLOUDFLARE_TOKEN%
 
 echo.
-echo  SI TU VOIS CA, LE TUNNEL A CRASHE.
+echo ============================================================
+echo ATTENTION : Le tunnel s'est arrete !
+echo ============================================================
 pause

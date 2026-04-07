@@ -143,8 +143,8 @@ export default function CompetitionFlow({ onClose }: CompetitionFlowProps) {
                     <h4 className="font-nunito font-black text-base mb-4">Type de compétition</h4>
                     <div className="flex flex-col gap-3">
                       {([
-                        { val: 'friendly', label: 'Amicale', icon: '🎮', desc: 'Pseudo libre, pas d\'ELO en jeu' },
-                        { val: 'ranked',   label: 'Classée',  icon: '⚡', desc: 'ELO en jeu, comptes requis' },
+                        { val: 'friendly', label: 'Amicale', icon: '🎮', desc: 'Pseudo libre, pas d\'impact sur le rang' },
+                        { val: 'ranked',   label: 'Classée',  icon: '⚡', desc: 'Points de rang en jeu, comptes requis' },
                       ] as const).map(opt => (
                         <button key={opt.val} onClick={() => setType(opt.val)} className={`flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all ${type === opt.val ? 'border-accent bg-accent/5' : 'border-border bg-card'}`}>
                           <span className="text-3xl">{opt.icon}</span>

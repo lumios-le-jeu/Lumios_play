@@ -1,45 +1,40 @@
 import { supabase } from './supabase';
-import type { ChildProfile, ParentAccount } from './types';
+import type { ChildProfile, ParentAccount, AccountType, MatchMode, ScoreDetail } from './types';
 
-/**
- * MOCK FALLBACKS
- * Used when Supabase is not properly configured locally or network fails
- */
-let mockedProfiles: ChildProfile[] = [];
-let mockedParent: ParentAccount | null = null;
+// ─── AUTHENTIFICATION ────────────────────────────────────────────────────────
 
-// ─── AUTHENTIFICATION PARENT ────────────────────────────────────────────────
-
-export async function createParentAccount(email: string, name: string): Promise<{ data: ParentAccount | null, error: any }> {
-  if (!supabase) {
-    mockedParent = { id: `parent-${Date.now()}`, email, name };
-    return { data: mockedParent, error: null };
-  }
-  
-  // Real Supabase Auth creation (without email confirmation for ease of use)
+export async function createParentAccount(
+  email: string,
+  name: string,
+  accountType: AccountType = 'family'
+): Promise<{ data: ParentAccount | null, error: any }> {
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email,
-    password: 'LumiosPlay123!', // Demo simplified password
+    password: 'LumiosPlay123!',
   });
 
   if (authError || !authData.user) return { data: null, error: authError };
 
-  // Insert into parent_accounts table
   const { data, error } = await supabase
     .from('parent_accounts')
-    .insert([{ email, name, auth_id: authData.user.id }])
+    .insert([{ email, name, auth_id: authData.user.id, account_type: accountType }])
     .select()
     .single();
 
-  return { data, error };
+  if (error || !data) return { data: null, error };
+
+  return {
+    data: {
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      accountType: data.account_type || 'family',
+    },
+    error: null,
+  };
 }
 
 export async function loginParent(email: string): Promise<{ data: ParentAccount | null, error: any }> {
-  if (!supabase) {
-    if (!mockedParent) mockedParent = { id: 'parent-demo', email, name: 'Demo Parent' };
-    return { data: mockedParent, error: null };
-  }
-
   const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
     email,
     password: 'LumiosPlay123!',
@@ -53,14 +48,59 @@ export async function loginParent(email: string): Promise<{ data: ParentAccount 
     .eq('auth_id', authData.user.id)
     .single();
 
-  return { data, error };
+  if (error || !data) return { data: null, error };
+
+  return {
+    data: {
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      accountType: data.account_type || 'family',
+    },
+    error: null,
+  };
 }
 
-// ─── PROFILS ENFANTS (App data) ──────────────────────────────────────────────
+export async function isEmailRegistered(email: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('parent_accounts')
+    .select('id')
+    .eq('email', email.trim())
+    .maybeSingle();
+  return !!data;
+}
+
+export async function isPseudoTaken(pseudo: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('profiles')
+    .select('id')
+    .ilike('pseudo', pseudo.trim())
+    .maybeSingle();
+  return !!data;
+}
+
+// ─── PROFILS ─────────────────────────────────────────────────────────────────
+
+function mapProfile(p: any): ChildProfile {
+  return {
+    id: p.id,
+    parentId: p.parent_id,
+    pseudo: p.pseudo,
+    avatarEmoji: p.avatar_emoji,
+    ageRange: p.age_range,
+    hasLumios: p.has_lumios,
+    elo: p.elo,
+    city: p.city,
+    createdAt: p.created_at,
+    rankTier: p.rank_tier || 'bronze',
+    rankStep: p.rank_step ?? 0,
+    seasonXp: p.season_xp ?? 0,
+    winStreak: p.win_streak ?? 0,
+    accountType: p.account_type || 'family',
+  };
+}
 
 export async function getProfilesForParent(parentId: string): Promise<{ data: ChildProfile[], error: any }> {
-  if (!supabase) return { data: mockedProfiles, error: null };
-
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
@@ -68,29 +108,12 @@ export async function getProfilesForParent(parentId: string): Promise<{ data: Ch
     .order('created_at', { ascending: true });
 
   if (data) {
-    const sorted = data.map(p => ({
-      id: p.id,
-      parentId: p.parent_id,
-      pseudo: p.pseudo,
-      avatarEmoji: p.avatar_emoji,
-      ageRange: p.age_range,
-      hasLumios: p.has_lumios,
-      elo: p.elo,
-      city: p.city,
-      createdAt: p.created_at,
-    }));
-    return { data: sorted, error: null };
+    return { data: data.map(mapProfile), error: null };
   }
   return { data: [], error };
 }
 
 export async function createChildProfile(profile: Omit<ChildProfile, 'id' | 'createdAt'>): Promise<{ data: ChildProfile | null, error: any }> {
-  if (!supabase) {
-    const newP = { ...profile, id: `child-${Date.now()}`, createdAt: new Date().toISOString() };
-    mockedProfiles.push(newP);
-    return { data: newP, error: null };
-  }
-
   const { data, error } = await supabase
     .from('profiles')
     .insert([{
@@ -100,32 +123,21 @@ export async function createChildProfile(profile: Omit<ChildProfile, 'id' | 'cre
       age_range: profile.ageRange,
       has_lumios: profile.hasLumios,
       elo: profile.elo,
-      city: profile.city
+      city: profile.city,
+      rank_tier: profile.rankTier || 'bronze',
+      rank_step: profile.rankStep ?? 0,
+      season_xp: profile.seasonXp ?? 0,
+      win_streak: profile.winStreak ?? 0,
+      account_type: profile.accountType || 'family',
     }])
     .select()
     .single();
 
   if (error || !data) return { data: null, error };
-
-  return { data: {
-    id: data.id,
-    parentId: data.parent_id,
-    pseudo: data.pseudo,
-    avatarEmoji: data.avatar_emoji,
-    ageRange: data.age_range,
-    hasLumios: data.has_lumios,
-    elo: data.elo,
-    city: data.city,
-    createdAt: data.created_at,
-  }, error: null };
+  return { data: mapProfile(data), error: null };
 }
 
 export async function updateProfileLumiosStatus(profileId: string, hasLumios: boolean): Promise<boolean> {
-  if (!supabase) {
-    const p = mockedProfiles.find(x => x.id === profileId);
-    if (p) p.hasLumios = hasLumios;
-    return true;
-  }
   const { error } = await supabase
     .from('profiles')
     .update({ has_lumios: hasLumios })
@@ -133,29 +145,143 @@ export async function updateProfileLumiosStatus(profileId: string, hasLumios: bo
   return !error;
 }
 
+export async function updateProfileRank(
+  profileId: string,
+  rankTier: string,
+  rankStep: number,
+  seasonXp: number,
+  winStreak: number,
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      rank_tier: rankTier,
+      rank_step: rankStep,
+      season_xp: Math.max(0, seasonXp),
+      win_streak: winStreak,
+    })
+    .eq('id', profileId);
+  return !error;
+}
+
+// ─── DAILY DUEL LIMIT ───────────────────────────────────────────────────────
+
+export async function getDailyDuelCount(profileId: string, opponentId: string): Promise<number> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const { count } = await supabase
+    .from('matches')
+    .select('*', { count: 'exact', head: true })
+    .eq('match_mode', 'competitive')
+    .gte('created_at', today.toISOString())
+    .or(`and(player1_id.eq.${profileId},player2_id.eq.${opponentId}),and(player1_id.eq.${opponentId},player2_id.eq.${profileId})`);
+
+  return count || 0;
+}
+
+// ─── MATCH SUBMISSION ───────────────────────────────────────────────────────
+
+export async function submitMatchResult(match: {
+  player1Id: string;
+  player2Id: string;
+  winnerId: string;
+  score: string;
+  scoreDetail: ScoreDetail;
+  matchMode: MatchMode;
+  matchType: 'duel' | 'arena' | 'competition';
+  stepChangeP1: number;
+  stepChangeP2: number;
+  commentWinner?: string;
+  commentLoser?: string;
+  mediaUrl?: string;
+  validatedByLoser?: boolean;
+}): Promise<{ data: any; error: any }> {
+  const { data, error } = await supabase
+    .from('matches')
+    .insert([{
+      player1_id: match.player1Id,
+      player2_id: match.player2Id,
+      winner_id: match.winnerId,
+      score: match.score,
+      score_detail: match.scoreDetail,
+      match_mode: match.matchMode,
+      match_type: match.matchType,
+      format: 'BO3',
+      step_change_p1: match.stepChangeP1,
+      step_change_p2: match.stepChangeP2,
+      comment_winner: match.commentWinner || null,
+      comment_loser: match.commentLoser || null,
+      media_url: match.mediaUrl || null,
+      validated_by_loser: match.validatedByLoser ?? false,
+      contested: false,
+    }])
+    .select()
+    .single();
+
+  return { data, error };
+}
+
+export async function contestMatch(matchId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('matches')
+    .update({ contested: true })
+    .eq('id', matchId);
+  return !error;
+}
+
+export async function validateMatch(matchId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('matches')
+    .update({ validated_by_loser: true })
+    .eq('id', matchId);
+  return !error;
+}
+
+// ─── MEDIA UPLOAD ───────────────────────────────────────────────────────────
+
+export async function uploadMatchMedia(file: File, matchId: string): Promise<string | null> {
+  const ext = file.name.split('.').pop();
+  const path = `match-media/${matchId}.${ext}`;
+
+  const { error } = await supabase.storage
+    .from('match-media')
+    .upload(path, file, { upsert: true });
+
+  if (error) {
+    console.error('Upload error:', error);
+    return null;
+  }
+
+  const { data: urlData } = supabase.storage
+    .from('match-media')
+    .getPublicUrl(path);
+
+  return urlData?.publicUrl || null;
+}
+
 // ─── LEADERBOARD & STATS ────────────────────────────────────────────────────
 
 export async function getGlobalLeaderboard(): Promise<{ data: any[], error: any }> {
-  if (!supabase) {
-    // Return sorted mocked profiles (or empty if none)
-    return { data: mockedProfiles.sort((a,b) => b.elo - a.elo).map((p, i) => ({ ...p, rank: i+1 })), error: null };
-  }
-
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
-    .order('elo', { ascending: false })
+    .order('rank_step', { ascending: false })
+    .order('season_xp', { ascending: false })
     .limit(50);
 
   if (data) {
-    const mapped = data.map((p, i) => ({
+    const mapped = data.map((p: any, i: number) => ({
       rank: i + 1,
       id: p.id,
       pseudo: p.pseudo,
       avatarEmoji: p.avatar_emoji,
       elo: p.elo,
       city: p.city,
-      hasLumios: p.has_lumios
+      hasLumios: p.has_lumios,
+      rankTier: p.rank_tier || 'bronze',
+      rankStep: p.rank_step ?? 0,
+      seasonXp: p.season_xp ?? 0,
     }));
     return { data: mapped, error: null };
   }
@@ -163,8 +289,6 @@ export async function getGlobalLeaderboard(): Promise<{ data: any[], error: any 
 }
 
 export async function getMatchHistory(profileId: string): Promise<{ data: any[], error: any }> {
-  if (!supabase) return { data: [], error: null };
-
   const { data, error } = await supabase
     .from('matches')
     .select(`
@@ -174,14 +298,15 @@ export async function getMatchHistory(profileId: string): Promise<{ data: any[],
     `)
     .or(`player1_id.eq.${profileId},player2_id.eq.${profileId}`)
     .order('created_at', { ascending: false })
-    .limit(10);
-  
+    .limit(20);
+
   if (error) return { data: [], error };
 
   const parsed = data.map((m: any) => {
     const isP1 = m.player1_id === profileId;
     const opponent = isP1 ? m.player2?.pseudo : m.player1?.pseudo;
     const won = m.winner_id === profileId;
+    const stepChange = isP1 ? (m.step_change_p1 ?? 0) : (m.step_change_p2 ?? 0);
     const eloChange = isP1 ? m.elo_change_p1 : m.elo_change_p2;
 
     return {
@@ -189,8 +314,16 @@ export async function getMatchHistory(profileId: string): Promise<{ data: any[],
       opponentPseudo: opponent || 'Anonyme',
       won,
       score: m.score,
-      eloChange,
-      date: new Date(m.created_at).toISOString().split('T')[0], // YYYY-MM-DD
+      scoreDetail: m.score_detail,
+      matchMode: m.match_mode || 'competitive',
+      stepChange,
+      eloChange: eloChange ?? 0,
+      date: new Date(m.created_at).toISOString().split('T')[0],
+      validatedByLoser: m.validated_by_loser,
+      contested: m.contested,
+      commentWinner: m.comment_winner,
+      commentLoser: m.comment_loser,
+      mediaUrl: m.media_url,
     };
   });
 
@@ -200,14 +333,12 @@ export async function getMatchHistory(profileId: string): Promise<{ data: any[],
 // ─── FRIENDS ─────────────────────────────────────────────────────────────────
 
 export async function getFriends(profileId: string): Promise<{ data: any[], error: any }> {
-  if (!supabase) return { data: [], error: null };
-
   const { data, error } = await supabase
     .from('friends')
     .select(`
       status,
       friend:profiles!friends_friend_id_fkey (
-        id, pseudo, avatar_emoji, has_lumios, elo, city
+        id, pseudo, avatar_emoji, has_lumios, elo, city, rank_tier, rank_step
       )
     `)
     .eq('profile_id', profileId)
@@ -215,17 +346,51 @@ export async function getFriends(profileId: string): Promise<{ data: any[], erro
 
   if (error || !data) return { data: [], error };
 
-  return {
-    data: data.map((f: any) => ({
+  const friendsWithCounts = await Promise.all(data.map(async (f: any) => {
+    const { count } = await supabase
+      .from('matches')
+      .select('*', { count: 'exact', head: true })
+      .or(`and(player1_id.eq.${profileId},player2_id.eq.${f.friend.id}),and(player1_id.eq.${f.friend.id},player2_id.eq.${profileId})`);
+
+    return {
       id: f.friend.id,
       pseudo: f.friend.pseudo,
       avatarEmoji: f.friend.avatar_emoji,
       hasLumios: f.friend.has_lumios,
       elo: f.friend.elo,
       city: f.friend.city,
-      isOnline: Math.random() > 0.5, // Faked online status for realistic feel
-      status: f.status
-    })),
-    error: null
-  };
+      isOnline: Math.random() > 0.5,
+      status: f.status,
+      rankTier: f.friend.rank_tier || 'bronze',
+      rankStep: f.friend.rank_step ?? 0,
+      matchCount: count || 0,
+    };
+  }));
+
+  return { data: friendsWithCounts, error: null };
+}
+
+export async function searchProfiles(query: string, excludeId?: string): Promise<{ data: any[], error: any }> {
+  let q = supabase
+    .from('profiles')
+    .select('*, id, pseudo, avatar_emoji, elo, city, rank_tier, rank_step')
+    .ilike('pseudo', `%${query}%`)
+    .limit(10);
+
+  if (excludeId) {
+    q = q.neq('id', excludeId);
+  }
+
+  const { data, error } = await q;
+  return { data: data || [], error };
+}
+
+export async function addFriend(profileId: string, friendId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('friends')
+    .upsert([
+      { profile_id: profileId, friend_id: friendId, status: 'accepted' },
+      { profile_id: friendId, friend_id: profileId, status: 'accepted' },
+    ]);
+  return !error;
 }

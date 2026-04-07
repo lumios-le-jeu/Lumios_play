@@ -1,12 +1,90 @@
 // ─── Core Types for Lumios Play ───────────────────────────────────────────────
 
-export type AgeRange = '6-8' | '9-11' | '12-14' | '15-17';
+// ─── CONFIG ─────────────────────────────────────────────────────────────────────
+/** Top N joueurs pour le rang Mythique (modifiable) */
+export const MYTHIC_TOP_N = 100;
+
+// ─── Account Types ──────────────────────────────────────────────────────────────
+export type AccountType = 'family' | 'individual';
+export type AgeRange = '6-8' | '9-11' | '12-14' | '15-17' | '18+';
 
 export interface ParentAccount {
   id: string;
   name: string;
   email: string;
+  accountType: AccountType;
+  pin?: string; // PIN parent local (4 chiffres), stocké côté client
 }
+
+// ─── Rank System (Paliers) ──────────────────────────────────────────────────────
+export type RankTier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond' | 'mythic';
+
+export interface RankTierConfig {
+  tier: RankTier;
+  name: string;
+  nameShort: string;
+  stepsPerRank: number;  // nombre d'étapes par rang (4 niveaux: 4→1)
+  ranks: number;         // nombre de rangs (toujours 4: 4,3,2,1)
+  winGain: number;       // étapes gagnées sur victoire
+  lossGain: number;      // étapes perdues sur défaite (négatif ou 0)
+  color: string;
+  icon: string;
+  bgGradient: string;
+}
+
+export const RANK_TIERS: RankTierConfig[] = [
+  {
+    tier: 'bronze', name: 'Bronze', nameShort: 'B',
+    stepsPerRank: 4, ranks: 4, winGain: 2, lossGain: 0,
+    color: '#cd7f32', icon: '🥉', bgGradient: 'from-amber-700 to-amber-500',
+  },
+  {
+    tier: 'silver', name: 'Argent', nameShort: 'A',
+    stepsPerRank: 4, ranks: 4, winGain: 2, lossGain: -1,
+    color: '#c0c0c0', icon: '🥈', bgGradient: 'from-slate-400 to-slate-300',
+  },
+  {
+    tier: 'gold', name: 'Or', nameShort: 'O',
+    stepsPerRank: 6, ranks: 4, winGain: 1, lossGain: -1,
+    color: '#ffd700', icon: '🥇', bgGradient: 'from-yellow-500 to-amber-400',
+  },
+  {
+    tier: 'platinum', name: 'Platine', nameShort: 'P',
+    stepsPerRank: 7, ranks: 4, winGain: 1, lossGain: -1,
+    color: '#00bfff', icon: '💎', bgGradient: 'from-cyan-400 to-blue-500',
+  },
+  {
+    tier: 'diamond', name: 'Diamant', nameShort: 'D',
+    stepsPerRank: 7, ranks: 4, winGain: 1, lossGain: -1,
+    color: '#b9f2ff', icon: '💠', bgGradient: 'from-sky-300 to-indigo-500',
+  },
+  {
+    tier: 'mythic', name: 'Mythique', nameShort: 'M',
+    stepsPerRank: 0, ranks: 1, winGain: 0, lossGain: 0,
+    color: '#ff6b6b', icon: '🔥', bgGradient: 'from-red-500 to-purple-600',
+  },
+];
+
+export interface RankInfo {
+  tier: RankTier;
+  rank: number;    // 4→1 (4 = le plus bas du palier)
+  step: number;    // étape courante dans le rang (0-based)
+  totalSteps: number;
+}
+
+export function getTierConfig(tier: RankTier): RankTierConfig {
+  return RANK_TIERS.find(t => t.tier === tier) ?? RANK_TIERS[0];
+}
+
+/** Rang initial pour les nouveaux joueurs */
+export const DEFAULT_RANK: RankInfo = {
+  tier: 'bronze',
+  rank: 4,
+  step: 0,
+  totalSteps: 4,
+};
+
+// ─── Profiles ───────────────────────────────────────────────────────────────────
 
 export interface ChildProfile {
   id: string;
@@ -15,10 +93,28 @@ export interface ChildProfile {
   avatarEmoji: string;
   ageRange: AgeRange;
   hasLumios: boolean;
-  elo: number;
+  elo: number;          // gardé pour compat / tri leaderboard
   city: string;
   createdAt: string;
+  // New rank fields
+  rankTier: RankTier;
+  rankStep: number;     // rang actuel 4→1 (encodé comme unique step globale, cf ranking.ts)
+  seasonXp: number;
+  winStreak: number;
+  accountType: AccountType;
 }
+
+export interface GuestProfile {
+  tempId: string;
+  pseudo: string;
+  avatarEmoji: string;
+  isGuest: true;
+}
+
+// ─── Match Types ────────────────────────────────────────────────────────────────
+
+export type MatchMode = 'competitive' | 'friendly';
+export type ScoreDetail = '2-0' | '0-2' | '2-1' | '1-2';
 
 export interface Match {
   id: string;
@@ -26,12 +122,26 @@ export interface Match {
   player2Id: string;
   winnerId: string | null;
   score: string;
-  eloChange: number;
+  scoreDetail: ScoreDetail | null;
+  matchMode: MatchMode;
   matchType: 'duel' | 'arena' | 'competition';
-  format: 'BO1' | 'BO3';
+  format: 'BO3';   // Toujours 2 manches gagnantes
   player1Pseudo: string;
   player2Pseudo: string;
   createdAt: string;
+  // Rank changes
+  stepChangeP1: number;
+  stepChangeP2: number;
+  // Validation
+  validatedByLoser: boolean;
+  contested: boolean;
+  // Comments & Media
+  commentWinner: string | null;
+  commentLoser: string | null;
+  mediaUrl: string | null;
+  // XP
+  xpChangeP1: number;
+  xpChangeP2: number;
 }
 
 export interface Friend {
@@ -43,6 +153,8 @@ export interface Friend {
   city: string;
   isOnline: boolean;
   status: 'pending' | 'accepted' | 'blocked';
+  rankTier: RankTier;
+  rankStep: number;
 }
 
 export interface Badge {
@@ -76,6 +188,8 @@ export interface CompetitionPlayer {
   pseudo: string;
   color: string;
   elo?: number;
+  rankTier?: RankTier;
+  rankStep?: number;
   wins: number;
   losses: number;
   points: number;
@@ -101,6 +215,8 @@ export interface Competition {
   status: 'setup' | 'pool' | 'bracket' | 'ended';
   champion?: CompetitionPlayer;
   createdAt: string;
+  location?: string;
+  dateTime?: string;
 }
 
 // ─── Leaderboard Types ─────────────────────────────────────────────────────────
@@ -115,6 +231,9 @@ export interface LeaderboardEntry {
   elo: number;
   city: string;
   hasLumios: boolean;
+  rankTier: RankTier;
+  rankStep: number;
+  seasonXp: number;
 }
 
 // ─── Socket Events ─────────────────────────────────────────────────────────────
@@ -125,7 +244,8 @@ export interface DuelSession {
   hostPseudo: string;
   guestId?: string;
   guestPseudo?: string;
-  format: 'BO1' | 'BO3';
+  format: 'BO3';
+  matchMode: MatchMode;
   status: 'waiting' | 'active' | 'ended';
   lat?: number;
   lng?: number;
@@ -140,7 +260,7 @@ export interface NearbyArena {
   level: string;
 }
 
-// ─── ELO Ranks ────────────────────────────────────────────────────────────────
+// ─── Legacy ELO Ranks (kept for backward compat display) ─────────────────────
 
 export interface EloRank {
   name: string;

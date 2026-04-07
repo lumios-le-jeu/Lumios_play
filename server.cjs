@@ -1,24 +1,49 @@
 // ─── Lumios Play — Serveur Node.js ────────────────────────────────────────────
-// Inspiré de QRGAME/qrshot-node/server.js (même architecture Express + Socket.IO)
-// Cloudflare Tunnel expose ce serveur (port 3000) sur internet
+// Cloudflare Tunnel "lumios-play-server" expose ce serveur (port 3001) sur internet
 
+require('dotenv').config();
 const express = require('express');
 const app = express();
 const http = require('http');
 const server = http.createServer(app);
 const { Server } = require('socket.io');
-const io = new Server(server);
 const path = require('path');
 const QRCode = require('qrcode');
+const { createClient } = require('@supabase/supabase-js');
+
+// ─── Supabase Client (Serveur) ────────────────────────────────────────────────
+const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
+
+// ─── Socket.IO avec CORS ouvert (Tunnel Cloudflare) ───────────────────────────
+const io = new Server(server, {
+  cors: {
+    origin: '*',               // Accepte les connexions depuis l'URL Cloudflare
+    methods: ['GET', 'POST'],
+  },
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000,
+  pingInterval: 25000,
+});
+
+// ─── CORS headers pour l'API REST ─────────────────────────────────────────────
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
 
 // ─── Static Files ──────────────────────────────────────────────────────────────
-// Production: servir le build Vite
+// Production: servir le build Vite depuis public/client
 app.use(express.static(path.join(__dirname, 'public/client')));
 app.use(express.json());
 
 // ─── State en mémoire ─────────────────────────────────────────────────────────
-const duels = {};     // { [code]: { host, guest, format, status, lat, lng } }
-const arenas = {};    // { [code]: { name, creator, players, level, lat, lng, status } }
+const duels = {};     // { [code]: lobby }
+const arenas = {};    // { [code]: lobby }
 const socketMap = {}; // socket.id -> { type: 'duel'|'arena', code }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -26,7 +51,7 @@ function generateCode() {
   return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
-/** Haversine distance in km — même algo que QRGAME */
+/** Haversine distance en km */
 function getDistanceKm(lat1, lon1, lat2, lon2) {
   if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
   const R = 6371;
@@ -56,7 +81,7 @@ app.get('/api/qr/:data', async (req, res) => {
   }
 });
 
-/** Arènes à proximité (pour la section PlayScreen) */
+/** Arènes actives à proximité */
 app.get('/api/arenas', (req, res) => {
   const { lat, lng, radius = 20.0 } = req.query;
   const nearby = Object.values(arenas)
@@ -71,7 +96,19 @@ app.get('/api/arenas', (req, res) => {
   res.json(nearby);
 });
 
-// SPA fallback
+/** Health-check endpoint (utile pour Cloudflare zero-trust) */
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: Math.round(process.uptime()),
+    lobbies: {
+      duels: Object.keys(duels).length,
+      arenas: Object.keys(arenas).length,
+    },
+  });
+});
+
+// SPA fallback — doit être APRES les routes API
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/client', 'index.html'));
 });
@@ -80,145 +117,162 @@ app.get('*', (req, res) => {
 io.on('connection', (socket) => {
   console.log(`[CONNECT] ${socket.id}`);
 
-  // ── DUEL: Créer ─────────────────────────────────────────────────────────────
-  socket.on('duel:create', (data, callback) => {
-    const code = data.code || generateCode();
-    duels[code] = {
-      code,
-      hostId: socket.id,
-      hostPseudo: data.pseudo,
-      guestId: null,
-      guestPseudo: null,
-      format: data.format || 'BO1',
-      lat: data.lat,
-      lng: data.lng,
-      status: 'waiting',
-      createdAt: Date.now(),
-    };
-    socket.join(`duel-${code}`);
-    socketMap[socket.id] = { type: 'duel', code };
-    console.log(`[DUEL:CREATE] Code=${code} Host=${data.pseudo} Format=${data.format}`);
-    callback({ success: true, code });
-  });
-
-  // ── DUEL: Rejoindre (scan du QR) ────────────────────────────────────────────
-  socket.on('duel:join', (data, callback) => {
-    const duel = duels[data.code];
-    if (!duel) { callback({ error: 'Partie introuvable' }); return; }
-    if (duel.status !== 'waiting') { callback({ error: 'Partie déjà commencée' }); return; }
-
-    // Vérification de proximité (500m max, comme QRGAME)
-    if (duel.lat && duel.lng && data.lat && data.lng) {
-      const dist = getDistanceKm(duel.lat, duel.lng, data.lat, data.lng);
-      if (dist > 0.5) {
-        callback({ error: `Trop loin ! (${Math.round(dist * 1000)}m > 500m)` });
-        return;
-      }
-    }
-
-    duel.guestId = socket.id;
-    duel.guestPseudo = data.pseudo;
-    duel.status = 'active';
-    socket.join(`duel-${data.code}`);
-    socketMap[socket.id] = { type: 'duel', code: data.code };
-
-    io.to(`duel-${data.code}`).emit('duel:matched', {
-      host: { id: duel.hostId, pseudo: duel.hostPseudo },
-      guest: { id: duel.guestId, pseudo: duel.guestPseudo },
-      format: duel.format,
-    });
-
-    console.log(`[DUEL:JOIN] Code=${data.code} Guest=${data.pseudo}`);
-    callback({ success: true, duel });
-  });
-
-  // ── DUEL: Score ─────────────────────────────────────────────────────────────
-  socket.on('duel:score', (data) => {
-    const info = socketMap[socket.id];
-    if (!info || info.type !== 'duel') return;
-    const duel = duels[info.code];
-    if (!duel) return;
-    io.to(`duel-${info.code}`).emit('duel:score', data);
-    console.log(`[DUEL:SCORE] Code=${info.code} Winner=${data.winner}`);
-  });
-
-  // ── ARENA: Créer ─────────────────────────────────────────────────────────────
-  socket.on('arena:create', (data, callback) => {
+  // ── CREATE LOBBY (Duel or Arena) ───────────────────────────────────────────
+  socket.on('create-lobby', (data) => {
     const code = generateCode();
-    arenas[code] = {
+    const lobby = {
       id: code,
-      name: data.name,
-      creatorId: socket.id,
-      creatorPseudo: data.pseudo,
+      hostId: socket.id,
+      hostProfileId: data.hostProfileId, // Supabase Profile ID
+      hostPseudo: data.hostPseudo,
+      hostElo: data.hostElo || 800,
+      mode: data.mode, // 'duel' or 'arena'
       lat: data.lat,
       lng: data.lng,
-      level: data.level || 'Tout niveau',
-      type: data.type || 'Match libre',
-      players: [{ id: socket.id, pseudo: data.pseudo }],
+      maxPlayers: data.maxPlayers || (data.mode === 'duel' ? 2 : 10),
+      isPrivate: !!data.isPrivate,
       status: 'open',
+      players: { [socket.id]: { pseudo: data.hostPseudo, profileId: data.hostProfileId, elo: data.hostElo || 800 } },
+      votes: {}, // Pour stocker les déclarations de vainqueur
       createdAt: Date.now(),
     };
-    socket.join(`arena-${code}`);
-    socketMap[socket.id] = { type: 'arena', code };
-    console.log(`[ARENA:CREATE] Code=${code} Name=${data.name}`);
-    callback({ success: true, code });
-  });
 
-  // ── ARENA: Rejoindre ─────────────────────────────────────────────────────────
-  socket.on('arena:join', (data, callback) => {
-    const arena = arenas[data.code];
-    if (!arena) { callback({ error: 'Arène introuvable' }); return; }
-    if (arena.status === 'ended') { callback({ error: 'Arène terminée' }); return; }
-
-    // Vérification de proximité (1km max pour arènes)
-    if (arena.lat && arena.lng && data.lat && data.lng) {
-      const dist = getDistanceKm(arena.lat, arena.lng, data.lat, data.lng);
-      if (dist > 1.0) {
-        callback({ error: `Trop loin de l'arène ! (${Math.round(dist * 1000)}m > 1km)` });
-        return;
-      }
+    if (data.mode === 'arena') {
+      arenas[code] = lobby;
+    } else {
+      duels[code] = lobby;
     }
 
-    arena.players.push({ id: socket.id, pseudo: data.pseudo });
-    socket.join(`arena-${data.code}`);
-    socketMap[socket.id] = { type: 'arena', code: data.code };
-    io.to(`arena-${data.code}`).emit('arena:update', arena);
-    console.log(`[ARENA:JOIN] Code=${data.code} Player=${data.pseudo}`);
-    callback({ success: true, arena });
+    socket.join(`lobby-${code}`);
+    socketMap[socket.id] = { type: data.mode, code };
+
+    console.log(`[LOBBY:CREATE] Code=${code} Mode=${data.mode} Host=${data.hostPseudo}`);
+    socket.emit('lobby-created', code);
   });
 
-  // ── ARENAS PROCHES ──────────────────────────────────────────────────────────
-  socket.on('req:nearby_arenas', (coords) => {
-    if (!coords?.lat || !coords?.lng) {
-      socket.emit('res:nearby_arenas', []);
+  // ── FIND LOBBIES (Nearby) ──────────────────────────────────────────────────
+  socket.on('find-lobbies', (data) => {
+    const { lat, lng, radius = 50 } = data;
+    const allLobbies = [...Object.values(arenas), ...Object.values(duels)];
+
+    const nearby = allLobbies
+      .filter(l => l.status === 'open' && !l.isPrivate)
+      .map(l => ({
+        ...l,
+        distance: getDistanceKm(lat, lng, l.lat, l.lng)
+      }))
+      .filter(l => l.distance <= radius)
+      .sort((a, b) => a.distance - b.distance);
+
+    socket.emit('lobbies-list', nearby);
+  });
+
+  // ── JOIN LOBBY BY CODE ─────────────────────────────────────────────────────
+  socket.on('join-lobby', (data) => {
+    const { lobbyId, pseudo } = data;
+    const lobby = arenas[lobbyId] || duels[lobbyId];
+
+    if (!lobby) {
+      socket.emit('error', 'Lobby introuvable');
       return;
     }
-    const nearby = Object.values(arenas)
-      .filter(a => a.status !== 'ended')
-      .map(a => ({
-        name: a.name,
-        code: a.id,
-        distance: getDistanceKm(a.lat, a.lng, coords.lat, coords.lng),
-        playerCount: a.players.length,
-        status: a.status,
-        level: a.level,
-      }))
-      .filter(a => a.distance < 20.0)
-      .sort((a, b) => a.distance - b.distance)
-      .slice(0, 5);
-    socket.emit('res:nearby_arenas', nearby);
+
+    if (Object.keys(lobby.players).length >= lobby.maxPlayers) {
+      socket.emit('error', 'Lobby plein');
+      return;
+    }
+
+    lobby.players[socket.id] = { pseudo, profileId: data.profileId, elo: data.elo || 800 };
+    socket.join(`lobby-${lobbyId}`);
+    socketMap[socket.id] = { type: lobby.mode, code: lobbyId };
+
+    // Notifier tout le lobby
+    io.to(`lobby-${lobbyId}`).emit('player-joined', { 
+      playerId: socket.id, 
+      pseudo, 
+      profileId: data.profileId, 
+      elo: data.elo || 800 
+    });
+
+    // Envoyer l'état complet au nouveau joueur
+    socket.emit('lobby-state', lobby);
+
+    console.log(`[LOBBY:JOIN] Code=${lobbyId} Player=${pseudo}`);
+  });
+
+  // ── START GAME (host only) ─────────────────────────────────────────────────
+  socket.on('start-game', (data) => {
+    const { lobbyId } = data;
+    const lobby = arenas[lobbyId] || duels[lobbyId];
+    if (!lobby || lobby.hostId !== socket.id) return;
+
+    lobby.status = 'playing';
+    io.to(`lobby-${lobbyId}`).emit('game-started', { lobbyId, players: lobby.players });
+    console.log(`[LOBBY:START] Code=${lobbyId}`);
+  });
+
+  // ── DECLARE WINNER & RECORD MATCH ──────────────────────────────────────────
+  socket.on('declare-winner', async (data) => {
+    const { lobbyId, winnerId, p1Id, p2Id, p1Elo, p2Elo, changeP1, changeP2 } = data;
+    const lobby = arenas[lobbyId] || duels[lobbyId];
+    if (!lobby) return;
+
+    if (supabase) {
+      try {
+        // 1. Enregistrer le match
+        await supabase.from('matches').insert([{
+          player1_id: p1Id,
+          player2_id: p2Id,
+          winner_id: winnerId,
+          elo_change_p1: changeP1,
+          elo_change_p2: changeP2,
+          type: lobby.mode === 'arena' ? 'arena' : 'ranked',
+          format: 'BO1',
+          code: lobbyId
+        }]);
+
+        // 2. Auto-Friend: Ajouter réciproquement en amis
+        await supabase.from('friends').upsert([
+          { profile_id: p1Id, friend_id: p2Id, status: 'accepted' },
+          { profile_id: p2Id, friend_id: p1Id, status: 'accepted' }
+        ], { onConflict: 'profile_id,friend_id' });
+
+        // 3. Mettre à jour les profils (ELO)
+        await supabase.from('profiles').update({ elo: p1Elo + changeP1 }).eq('id', p1Id);
+        await supabase.from('profiles').update({ elo: p2Elo + changeP2 }).eq('id', p2Id);
+        
+        console.log(`[DB:UPDATE] Match enregistré pour Code=${lobbyId}`);
+      } catch (err) {
+        console.error('[DB:ERROR]', err);
+      }
+    }
+
+    lobby.status = 'ended';
+    io.to(`lobby-${lobbyId}`).emit('game-finished', { 
+      winnerId, 
+      changes: { [p1Id]: changeP1, [p2Id]: changeP2 } 
+    });
   });
 
   // ── DISCONNECT ───────────────────────────────────────────────────────────────
   socket.on('disconnect', () => {
     const info = socketMap[socket.id];
-    if (info?.type === 'arena') {
-      const arena = arenas[info.code];
-      if (arena) {
-        arena.players = arena.players.filter(p => p.id !== socket.id);
-        io.to(`arena-${info.code}`).emit('arena:update', arena);
-        if (arena.players.length === 0) {
-          arena.status = 'ended';
+    if (info) {
+      const collection = info.type === 'arena' ? arenas : duels;
+      const lobby = collection[info.code];
+      if (lobby) {
+        delete lobby.players[socket.id];
+        if (Object.keys(lobby.players).length === 0) {
+          delete collection[info.code];
+          console.log(`[LOBBY:EMPTY] Code=${info.code} supprimé`);
+        } else {
+          // Si l'hôte part, le lobby est annulé
+          if (lobby.hostId === socket.id) {
+            lobby.status = 'ended';
+            io.to(`lobby-${info.code}`).emit('lobby-closed', 'L\'hôte a quitté la partie');
+          } else {
+            io.to(`lobby-${info.code}`).emit('lobby-state', lobby);
+          }
         }
       }
     }
@@ -227,25 +281,26 @@ io.on('connection', (socket) => {
   });
 });
 
-// ─── Cleanup stale duels/arenas every 30min ────────────────────────────────────
+// ─── Cleanup stale lobbies every 30min ────────────────────────────────────────
 setInterval(() => {
   const cutoff = Date.now() - 30 * 60 * 1000;
+  let cleaned = 0;
   Object.entries(duels).forEach(([code, d]) => {
-    if (d.createdAt < cutoff) delete duels[code];
+    if (d.createdAt < cutoff) { delete duels[code]; cleaned++; }
   });
   Object.entries(arenas).forEach(([code, a]) => {
-    if (a.createdAt < cutoff || a.status === 'ended') delete arenas[code];
+    if (a.createdAt < cutoff || a.status === 'ended') { delete arenas[code]; cleaned++; }
   });
+  if (cleaned > 0) console.log(`[CLEANUP] ${cleaned} lobby(s) supprimé(s)`);
 }, 5 * 60 * 1000);
 
 // ─── Start ─────────────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log('');
   console.log('  ⚡ LUMIOS PLAY — Serveur démarré');
-  console.log(`  🌐 http://localhost:${PORT}`);
-  console.log('');
-  console.log('  🔗 Pour exposer via Cloudflare Tunnel :');
-  console.log('     cloudflared tunnel run --token <VOTRE_TOKEN>');
+  console.log(`  🌐 Local : http://localhost:${PORT}`);
+  console.log(`  🔗 Tunnel : lumios-play-server (Connector: 2a0b9c52-7889-4e1d-ae13-ff2ddd882abf)`);
+  console.log(`  📊 Health : http://localhost:${PORT}/api/health`);
   console.log('');
 });

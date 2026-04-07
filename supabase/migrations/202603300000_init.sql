@@ -94,6 +94,20 @@ ALTER TABLE competitions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Parents can view their profiles" ON profiles
   FOR SELECT USING (auth.uid() = (SELECT auth_id FROM parent_accounts WHERE id = parent_id));
 
--- RLS publique pour la lecture (le serveur Node valide les ELO)
+-- Profiles RLS
 CREATE POLICY "Public profiles are viewable by everyone" ON profiles
   FOR SELECT USING (true);
+
+-- Parents can only insert/view/update their own account
+CREATE POLICY "Allow parent insert" ON parent_accounts
+  FOR INSERT WITH CHECK (auth.uid() = auth_id);
+
+CREATE POLICY "Allow parent select own" ON parent_accounts
+  FOR SELECT USING (auth.uid() = auth_id);
+
+CREATE POLICY "Allow parent update own" ON parent_accounts
+  FOR UPDATE USING (auth.uid() = auth_id);
+
+-- Case-insensitive pseudo uniqueness
+ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_pseudo_key;
+CREATE UNIQUE INDEX IF NOT EXISTS profiles_pseudo_case_insensitive_idx ON profiles (LOWER(pseudo));

@@ -1,0 +1,121 @@
+Objectif : Créer une application mobile (React/Vite/Tailwind + Supabase) pour un jeu physique de boules lumineuses. L'app gère des profils, un classement mondial par paliers, et l'organisation de compétitions locales.
+
+1. Onboarding & Structure des Comptes :
+
+Types de Comptes : * Compte Famille : Un parent gère plusieurs profils enfants/membres. Chaque profil a ses propres stats. Les actions critiques (validation score, ajout ami) sont protégées par un PIN Parent.
+
+Compte Individuel (+12 ans) : Autonome. Possibilité de lier un compte individuel à un compte Famille a posteriori via QR Code.
+
+Dans l’Onboarding, on créé d’abord le profil personnel (parent ou +12ans) et ensuite si c’est un compte famille, on a la possibilité d’ajouter sa famille avec âge, lien de parenté, etc.
+
+Profils : Pseudo, avatar, historique de matchs, badges et rang actuel.
+
+a. Le Mode "Invité" (Le "Play Now")
+Ne demande jamais d'email ou de mot de passe avant la première partie.
+Le Bouton Magique : Sur l'écran d'accueil, un gros bouton "Rejoindre une partie".
+Le Processus : L'invité scanne le QR Code de l'hôte. L'app lui demande juste un Pseudo et un Avatar rapide.
+La Récompense : À la fin du match, l'app affiche : "Tu as gagné 150 XP ! Crée ton compte en 1 clic pour les conserver et monter en Bronze 4." (C'est là que tu convertis l'utilisateur).
+b. Le "Scan & Play" (Zéro saisie)
+Le QR Code doit être la clé de tout.
+Pour l'Ami : L'hôte affiche son QR Code "Défi". L'invité scanne, et hop, il est dans le salon de match.
+Pour la Famille : Le parent affiche un QR Code "Ajouter un membre". L'enfant scanne avec son téléphone, et les comptes sont liés instantanément sans taper d'identifiant complexe.
+
+
+
+
+2. Système de Classement & Saisons :
+
+Paliers de Rang (4 niveaux par palier : de 4 à 1) :
+
+Bronze : 4 étapes/rang. Victoire +2, défaite 0.
+
+Argent : 4 étapes/rang. Victoire +2, défaite -1.
+
+Or : 6 étapes/rang. Victoire +1, défaite -1.
+
+Platine & Diamant : 7 étapes/rang. Victoire +1, défaite -1.
+
+Mythique : Top 1000 mondial (classement numérique).
+
+Logique "Tête de Série" : Battre un joueur de palier supérieur donne +1 étape bonus. Perdre contre un joueur de palier inférieur coûte -1 étape supplémentaire (sauf en Bronze).
+
+Temporalité : Saisons de 1 mois. Récompenses de fin de saison (badges, points pour le classement annuel, éventuellement lot à gagner).
+
+a. Système de Perte d'Étapes (Rangs) :
+Paliers Or, Platine, Diamant :
+Défaite Standard : -1 Étape.
+Contre-Performance : Si un joueur perd contre un adversaire ayant 2 rangs ou plus de moins (ex: Or 1 perd contre Or 4 ou Argent), le malus passe à -2 Étapes.
+Bonus "Super Perf" : Si un joueur gagne contre un adversaire ayant 2 rangs ou plus de plus (ex: Argent 4 bat Argent 1 ou Or), il gagne +2 Étapes au lieu de +1.
+b. Système de Points de Saison (XP) avec Coefficients :
+Victoire Standard : 100 points.
+Coefficient de Palier : * Victoire contre plus fort : x1.5 (150 pts).
+Victoire contre plus faible (2 paliers d'écart) : x0.5 (50 pts).
+Malus de Saison (À partir du palier Or) :
+Chaque défaite retire 25 points au score de la saison en cours (le score ne peut pas descendre en dessous de 0).
+Contre-Performance majeure : Perdre contre un joueur de palier inférieur retire 50 points.
+
+
+
+3. Modes de Jeu (Systématiquement en 2 manches gagnantes) :
+
+Défis entre Amis : Choix entre "Amical" (stats et fun uniquement) ou "Compétitif" (impact sur le rang et les étapes).
+
+Arènes Locales : Création d'une zone de rencontre.
+
+L'hôte donne un nom et une géolocalisation (affichée avec un floutage de sécurité de 300m).
+
+Les joueurs rejoignent via scan de QR Code ou code de l'arène.
+
+Choix du mode Amical ou Compétitif pour chaque rencontre dans l'arène.
+Si on veut organiser un tournoi au sein de l’arène, on bascule en mode compétitions tournois.
+
+Dans tous les modes de jeu, un compte famille peut faire jouer des membres de sa famille l’un contre l’autre.
+
+On ,ne peut pas défier plus de 3 fois par jour, la même personne en mode compétitif. Illimité en mode amical
+
+4. Mode Tournois :
+
+On peut avoir un mode compétitif ou chaque joueur doit avoir un compte, possibilité d’envoyer le lien de création de compte à chaque joueur avec système de parrainage.
+Sinon mode amical.
+
+2 modes de jeu : tournoi à élimination direct ou coupes (poules + élimination directe)
+
+Configuration : Nom, Lieu, Date et Heure. Minimum 4 joueurs, pas de maximum.
+
+Logique d'Exemption (Byes) : * Si le nombre de joueurs est impair :
+* En Compétitif : Les joueurs avec le meilleur rang sont exempts du premier tour (Têtes de série).
+* En Amical : L'exemption est tirée au sort aléatoirement.
+
+Gestion multi-profils : Un compte Famille peut inscrire plusieurs de ses profils enfants à une même compétition.
+
+5. Validation des Scores & Litiges :
+
+Processus : Le créateur du duel saisit le score. Le perdant reçoit une notification pour valider (sauf si c’est le créateur qui est battu c’est validé automatiquement, on demande bien une étape de validation avant d’enregistrer le score). Les scores peuvent être 2-0 ; 0-2 ; 2-1 ; 1-2)
+
+Possibilité d’ajouter une photo ou vidéo souvenir du match qui est sauvegardé dans le profil
+Possibilité de mettre un commentaire du gagnant et du perdant sur chaque match.
+
+Auto-validation : Si le perdant ne valide pas sous 7 jours, le score est entériné.
+
+Contestation : Le perdant peut cliquer sur "Contester", ce qui suspend les points et ouvre une enquête administrateur.
+
+6. Gamification & Rétention :
+
+Bonus Quotidien : Points gagnés par match joué. Multiplicateur si série de match (3, 5, 7 jours).
+
+Badges : "Série de victoires", "Globe-Trotter" (3 lieux différents), "Fair-play", etc.
+Série de Victoires (Win Streak) : À partir de la 3ème victoire consécutive, un bonus de +20 points est ajouté à chaque match gagné tant que la série continue.
+
+Possibilité aux admins de notifier les Happy Hour (Mercredi & Samedi après-midi) : Tous les points d'XP de victoire sont doublés (x2).
+
+Récompenses : Bons d'achats ou tickets de qualification pour les championnats régionaux/nationaux pour les Tops du classement.
+
+Ajoute sur l’appli la possibilité de s'entraîner en ligne avec le jeu https://lumios-le-jeu.github.io/ (plutôt en footer)
+
+7. Stack Technique :
+
+Backend : Supabase (Auth, Database, Storage).
+
+Frontend : React (Mobile First), Lucide React (Icons), Mapbox (Cartographie).
+
+Implémente une fonction calculateRankingUpdate pour gérer la logique des paliers et des étapes.

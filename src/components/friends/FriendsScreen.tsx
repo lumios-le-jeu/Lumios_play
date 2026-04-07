@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, UserPlus, QrCode, MessageSquare, Swords, Wifi, WifiOff, Loader2 } from 'lucide-react';
 import type { ChildProfile, Friend } from '../../lib/types';
-import { getFriends } from '../../lib/api';
+import { getFriends, searchProfiles, addFriend } from '../../lib/api';
 
 const QUICK_MESSAGES = ['Bien joué ! 👏', 'Revanche ? 🔄', 'On arrive au parc 🏃', 'GG ! 🎉', 'Tu joues ? ⚡'];
 
@@ -20,7 +20,9 @@ export default function FriendsScreen({ profile }: FriendsScreenProps) {
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
   const [sentMessage, setSentMessage] = useState('');
   const [friendsList, setFriendsList] = useState<Friend[]>([]);
+  const [globalResults, setGlobalResults] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
     async function fetchFr() {
@@ -30,6 +32,34 @@ export default function FriendsScreen({ profile }: FriendsScreenProps) {
     }
     fetchFr();
   }, [profile.id]);
+
+  const handleAddFriend = async (friendId: string) => {
+    const ok = await addFriend(profile.id, friendId);
+    if (ok) {
+      const { data } = await getFriends(profile.id);
+      setFriendsList(data);
+      setSearch('');
+      setGlobalResults([]);
+    }
+  };
+
+  useEffect(() => {
+    if (search.length < 2) {
+      setGlobalResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      const { data } = await searchProfiles(search, profile.id);
+      // Filter out people who are already friends
+      const filtered = (data || []).filter(u => !friendsList.find(f => f.id === u.id));
+      setGlobalResults(filtered);
+      setIsSearching(false);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [search, profile.id, friendsList]);
 
   const filtered = friendsList.filter(f => {
     const matchesSearch = f.pseudo.toLowerCase().includes(search.toLowerCase());
@@ -109,8 +139,12 @@ export default function FriendsScreen({ profile }: FriendsScreenProps) {
                 {friend.hasLumios && <span className="badge-lumios badge-golden text-[10px] px-1.5 py-0.5">⚡</span>}
               </div>
               <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-xs text-muted-foreground">{friend.city}</span>
-                <span className="text-xs font-bold" style={{ color: 'hsl(var(--primary))' }}>⭐ {friend.elo}</span>
+                <span className="text-xs text-muted-foreground mr-auto">{friend.city} · ⭐ {friend.elo}</span>
+                {(friend as any).matchCount > 0 && (
+                  <span className="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
+                    {(friend as any).matchCount} parties jouées
+                  </span>
+                )}
               </div>
             </div>
 
@@ -124,10 +158,35 @@ export default function FriendsScreen({ profile }: FriendsScreenProps) {
           </motion.button>
         ))}
 
-        {filtered.length === 0 && (
-          <div className="text-center py-10 text-muted-foreground">
-            <p className="text-3xl mb-2">🔍</p>
-            <p className="font-semibold">Aucun ami trouvé</p>
+        {/* Global Search Results */}
+        {search.length >= 2 && (
+          <div className="mt-4">
+            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3 px-1">Résultats Globaux</h3>
+            {isSearching ? (
+              <div className="flex justify-center p-4"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+            ) : globalResults.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center p-4 italic">Aucun autre utilisateur trouvé</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {globalResults.map(user => (
+                  <div key={user.id} className="w-full flex items-center gap-3 p-3 card-lumios bg-card/40">
+                    <div className="w-10 h-10 gradient-lumios rounded-xl flex items-center justify-center text-xl">
+                      {user.avatar_emoji}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-nunito font-bold text-sm">{user.pseudo}</p>
+                      <p className="text-[10px] text-muted-foreground">⭐ {user.elo} · {user.city}</p>
+                    </div>
+                    <button 
+                      onClick={() => handleAddFriend(user.id)}
+                      className="btn-primary py-1.5 px-3 text-xs"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" /> Ajouter
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
