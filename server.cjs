@@ -36,9 +36,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// ─── Static Files ──────────────────────────────────────────────────────────────
-// Production: servir le build Vite depuis public/client
-app.use(express.static(path.join(__dirname, 'public/client')));
+// Production: servir le build Vite depuis le dossier dist
+app.use(express.static(path.join(__dirname, 'dist')));
 app.use(express.json());
 
 // ─── State en mémoire ─────────────────────────────────────────────────────────
@@ -110,7 +109,7 @@ app.get('/api/health', (req, res) => {
 
 // SPA fallback — doit être APRES les routes API
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/client', 'index.html'));
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 // ─── Socket.IO ────────────────────────────────────────────────────────────────
