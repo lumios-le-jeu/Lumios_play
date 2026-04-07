@@ -37,7 +37,9 @@ app.use((req, res, next) => {
 });
 
 // Production: servir le build Vite depuis le dossier dist
-app.use(express.static(path.join(__dirname, 'dist')));
+const distPath = path.join(__dirname, 'dist');
+app.use(express.static(distPath));
+app.use('/assets', express.static(path.join(distPath, 'assets')));
 app.use(express.json());
 
 // ─── State en mémoire ─────────────────────────────────────────────────────────
