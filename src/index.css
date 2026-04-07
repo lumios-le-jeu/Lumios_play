@@ -4,6 +4,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Cache buster: v0.4 */
+@tailwind utilities;
+
 /* ─── Design System Tokens ────────────────────────────────────────────────── */
 :root {
   /* Geometry */
