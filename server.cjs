@@ -297,10 +297,10 @@ setInterval(() => {
 
 // ─── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log('');
   console.log('  ⚡ LUMIOS PLAY — Serveur démarré');
-  console.log(`  🌐 Local : http://localhost:${PORT}`);
+  console.log(`  🌐 Local : http://127.0.0.1:${PORT}`);
   console.log(`  🔗 Tunnel : lumios-play-server (Connector: 2a0b9c52-7889-4e1d-ae13-ff2ddd882abf)`);
   console.log(`  📊 Health : http://localhost:${PORT}/api/health`);
   console.log('');
