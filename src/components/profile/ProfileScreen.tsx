@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Bell, Shield, Settings, LogOut, Sparkles, ChevronRight, RotateCcw, X, QrCode, Star, Flame } from 'lucide-react';
+import { User, Bell, Shield, Settings, LogOut, Sparkles, ChevronRight, RotateCcw, X, QrCode, Star, Flame, Users, Search, Check, Loader2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import type { ChildProfile } from '../../lib/types';
+import type { ChildProfile, ParentAccount } from '../../lib/types';
 import { getTierConfig } from '../../lib/types';
 import { getRankDisplayName, getRankProgress, getNextRankName, fromGlobalStep } from '../../lib/ranking';
 import { formatDate } from '../../lib/utils';
+import { searchFamilyAccounts, requestFamilyLink, getPendingFamilyRequests, acceptFamilyLink, declineFamilyLink } from '../../lib/api';
 
 interface ProfileScreenProps {
   profile: ChildProfile;
+  parentAccount?: ParentAccount;
   onLogout: () => void;
   onSwitchProfile: () => void;
 }
@@ -19,9 +21,59 @@ const MENU_ITEMS = [
   { id: 'settings',      icon: Settings, label: 'Paramètres',        desc: 'Langue, son, apparence' },
 ];
 
-export default function ProfileScreen({ profile, onLogout, onSwitchProfile }: ProfileScreenProps) {
+export default function ProfileScreen({ profile, parentAccount, onLogout, onSwitchProfile }: ProfileScreenProps) {
   const [showComingSoon, setShowComingSoon] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  // #15 — Liaison famille
+  const [showFamilyLink, setShowFamilyLink] = useState(false);
+  const [familySearch, setFamilySearch] = useState('');
+  const [familyResults, setFamilyResults] = useState<any[]>([]);
+  const [familySearching, setFamilySearching] = useState(false);
+  const [familyRequestSent, setFamilyRequestSent] = useState<string | null>(null);
+  const [pendingLinks, setPendingLinks] = useState<any[]>([]);
+  const [linkLoading, setLinkLoading] = useState(false);
+
+  const isIndividual = profile.accountType === 'individual';
+  const isFamilyAdmin = profile.accountType === 'family' && parentAccount?.id === profile.parentId;
+
+  // Charger demandes de rattachement si responsable famille
+  useEffect(() => {
+    if (isFamilyAdmin && parentAccount?.id) {
+      getPendingFamilyRequests(parentAccount.id).then(({ data }) => setPendingLinks(data));
+    }
+  }, [isFamilyAdmin, parentAccount?.id]);
+
+  // Recherche famille
+  useEffect(() => {
+    if (familySearch.length < 2) { setFamilyResults([]); return; }
+    const t = setTimeout(async () => {
+      setFamilySearching(true);
+      const { data } = await searchFamilyAccounts(familySearch);
+      setFamilyResults(data || []);
+      setFamilySearching(false);
+    }, 500);
+    return () => clearTimeout(t);
+  }, [familySearch]);
+
+  const handleRequestLink = async (familyParentId: string) => {
+    setLinkLoading(true);
+    await requestFamilyLink(profile.id, familyParentId);
+    setFamilyRequestSent(familyParentId);
+    setLinkLoading(false);
+  };
+
+  const handleAcceptLink = async (req: any) => {
+    if (!parentAccount?.id) return;
+    setLinkLoading(true);
+    await acceptFamilyLink(req.requestId, req.id, parentAccount.id);
+    setPendingLinks(prev => prev.filter(r => r.requestId !== req.requestId));
+    setLinkLoading(false);
+  };
+
+  const handleDeclineLink = async (requestId: string) => {
+    await declineFamilyLink(requestId);
+    setPendingLinks(prev => prev.filter(r => r.requestId !== requestId));
+  };
 
   const tierCfg = getTierConfig(profile.rankTier);
   const rankName = getRankDisplayName(profile.rankTier, profile.rankStep);
@@ -133,6 +185,56 @@ export default function ProfileScreen({ profile, onLogout, onSwitchProfile }: Pr
         </motion.button>
       </motion.div>
 
+      {/* #15 — Rattachement famille (compte individuel) */}
+      {isIndividual && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.10 }} className="mb-4">
+          <motion.button
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setShowFamilyLink(true)}
+            className="card-lumios p-4 flex items-center gap-3 w-full text-left card-lumios-hover"
+          >
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'hsl(var(--lumios-green)/0.12)' }}>
+              <Users className="w-5 h-5" style={{ color: 'hsl(var(--lumios-green))' }} />
+            </div>
+            <div className="flex-1">
+              <p className="font-nunito font-black text-sm">Rejoindre une famille</p>
+              <p className="text-xs text-muted-foreground">Rattacher ce profil à un compte famille</p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          </motion.button>
+        </motion.div>
+      )}
+
+      {/* #15 — Demandes de rattachement reçues (responsable famille) */}
+      {isFamilyAdmin && pendingLinks.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.10 }} className="mb-5">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2 px-1">
+            Demandes de rattachement ({pendingLinks.length})
+          </p>
+          <div className="flex flex-col gap-2">
+            {pendingLinks.map(req => (
+              <div key={req.requestId} className="flex items-center gap-3 p-3 card-lumios border-primary/20 bg-primary/3">
+                <div className="w-10 h-10 gradient-lumios rounded-xl flex items-center justify-center text-xl flex-shrink-0">
+                  {req.avatarEmoji}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-nunito font-bold text-sm">{req.pseudo}</p>
+                  <p className="text-xs text-muted-foreground">{req.ageRange} ans</p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => handleDeclineLink(req.requestId)} className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground hover:text-red-500 transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => handleAcceptLink(req)} className="w-8 h-8 rounded-lg gradient-lumios flex items-center justify-center text-white">
+                    {linkLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
       {/* Menu Items */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
@@ -233,7 +335,64 @@ export default function ProfileScreen({ profile, onLogout, onSwitchProfile }: Pr
         )}
       </AnimatePresence>
 
-      <p className="text-center text-xs text-muted-foreground mt-6">Lumios Play v2.0 · Avril 2026</p>
+      {/* #15 — Modal recherche famille */}
+      <AnimatePresence>
+        {showFamilyLink && (
+          <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowFamilyLink(false)}>
+            <motion.div
+              className="modal-sheet"
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="font-nunito font-black text-lg">Rejoindre une Famille</h3>
+                <button onClick={() => setShowFamilyLink(false)} className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Recherchez la famille par son nom. Le responsable devra accepter votre demande.
+              </p>
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  className="input-lumios pl-9"
+                  placeholder="Nom de la famille…"
+                  value={familySearch}
+                  onChange={e => setFamilySearch(e.target.value)}
+                />
+              </div>
+              {familySearching && <div className="flex justify-center p-4"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>}
+              <div className="flex flex-col gap-2">
+                {familyResults.map(fam => (
+                  <div key={fam.id} className="flex items-center gap-3 p-3 card-lumios">
+                    <div className="w-10 h-10 bg-muted rounded-xl flex items-center justify-center text-xl">🏡</div>
+                    <div className="flex-1">
+                      <p className="font-nunito font-bold text-sm">{fam.name}</p>
+                      <p className="text-xs text-muted-foreground">{fam.email}</p>
+                    </div>
+                    <button
+                      onClick={() => !familyRequestSent && handleRequestLink(fam.id)}
+                      disabled={familyRequestSent === fam.id || linkLoading}
+                      className={`py-1.5 px-3 text-xs rounded-xl font-bold flex items-center gap-1 transition-all ${
+                        familyRequestSent === fam.id ? 'bg-muted text-muted-foreground' : 'btn-primary'
+                      }`}
+                    >
+                      {familyRequestSent === fam.id
+                        ? <><Check className="w-3.5 h-3.5" /> Envoyé</>
+                        : <><Users className="w-3.5 h-3.5" /> Rejoindre</>
+                      }
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <p className="text-center text-xs text-muted-foreground mt-6">Lumios Play v2.1 · Avril 2026</p>
     </div>
   );
 }

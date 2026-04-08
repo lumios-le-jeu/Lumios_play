@@ -1,0 +1,17 @@
+Le site est en ligne, stable, et survivra aux redémarrage du Mac mini. Votre PC Windows est maintenant "nettoyé" et ne créera plus de conflit.
+
+Voici un petit récapitulatif pour vous :
+
+### 📋 Carnet de bord du déploiement
+*   **Adresse du jeu** : [https://play.qrshotgame.fr](https://play.qrshotgame.fr)
+*   **Infrastructure** : Mac mini (Mac OS) + PM2 (gestionnaire de serveurs) + Cloudflare Tunnel.
+*   **Point de vigilance** : N'activez plus jamais de tunnel Cloudflare sur votre Windows avec le même token, sinon le "conflit" reviendra.
+
+### 🛠️ Maintenance (Sur le Mac mini seulement)
+Si vous faites des modifications sur le code à l'avenir :
+1.  Faites votre `git pull` sur le Mac.
+2.  Relancez tout d'un coup avec : `npm run build && pm2 restart lumios-play`
+
+Je vous laisse tester le jeu tranquillement ! On se retrouve quand vous voulez pour ajouter une nouvelle fonctionnalité (les classements, les duels, etc.) ou pour peaufiner l'interface. 
+
+Bon jeu ! 🎮✨

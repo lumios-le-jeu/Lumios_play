@@ -15,7 +15,9 @@ const AGE_RANGES: { value: AgeRange; label: string; sub: string }[] = [
   { value: '18+',    label: '18 ans +',    sub: 'Adulte' },
 ];
 
-const FAMILY_RELATIONS = ['Fils', 'Fille', 'Neveu', 'Nièce', 'Cousin', 'Cousine', 'Autre'];
+// #1 — Père & Mère ajoutés  (adultes +18)
+const FAMILY_RELATIONS = ['Fils', 'Fille', 'Père', 'Mère', 'Neveu', 'Nièce', 'Cousin', 'Cousine', 'Autre'];
+const ADULT_RELATIONS  = ['Père', 'Mère']; // forcer 18+ pour ces rôles
 
 interface AuthScreenProps {
   onAuthComplete: (parent: ParentAccount) => void;
@@ -27,45 +29,74 @@ type AuthView = 'welcome' | 'login' | 'signup' | 'guest';
 export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenProps) {
   const [view, setView] = useState<AuthView>('welcome');
   const [signupStep, setSignupStep] = useState(1);
-  const TOTAL_STEPS = 6;
+
+  // Pour compte famille : 7 étapes ; individuel : 5 étapes
+  // Étapes famille : 1-Type | 2-NomFamille | 3-InfosResponsable | 4-ProfilJoueur | 5-Age | 6-HasLumios | 7-Membres
+  // Étapes indiv   : 1-Type | 2-InfosJoueur | 3-ProfilJoueur | 4-Age | 5-HasLumios
+  const TOTAL_STEPS_FAMILY = 7;
+  const TOTAL_STEPS_INDIV  = 5;
 
   // Form state
   const [accountType, setAccountType] = useState<AccountType>('family');
-  const [parentName, setParentName] = useState('');
+  // #2 — Nom de la famille
+  const [familyName, setFamilyName] = useState('');
+  // #4 — Prénom + Nom séparés pour le créateur
+  const [parentFirstName, setParentFirstName] = useState('');
+  const [parentLastName, setParentLastName]   = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
-  const [pseudo, setPseudo] = useState('');
-  const [avatar, setAvatar] = useState(AVATARS[0]);
+  const [pseudo, setPseudo]   = useState('');
+  const [avatar, setAvatar]   = useState(AVATARS[0]);
   const [ageRange, setAgeRange] = useState<AgeRange>('18+');
   const [hasLumios, setHasLumios] = useState<boolean | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
 
-  // Family member (step 6)
+  // Family member state
   const [addingMember, setAddingMember] = useState(false);
+  // #3 — Prénom + Nom + Pseudo pour enfant
+  const [memberFirstName, setMemberFirstName] = useState('');
+  const [memberLastName, setMemberLastName]   = useState('');
   const [memberPseudo, setMemberPseudo] = useState('');
   const [memberAvatar, setMemberAvatar] = useState(AVATARS[2]);
   const [memberAge, setMemberAge] = useState<AgeRange>('9-11');
   const [memberRelation, setMemberRelation] = useState(FAMILY_RELATIONS[0]);
-  const [pendingMembers, setPendingMembers] = useState<{pseudo: string, avatar: string, ageRange: AgeRange}[]>([]);
+  const [pendingMembers, setPendingMembers] = useState<{
+    firstName: string; lastName: string; pseudo: string; avatar: string; ageRange: AgeRange; relation: string;
+  }[]>([]);
 
   // Guest state
   const [guestPseudo, setGuestPseudo] = useState('');
   const [guestAvatar, setGuestAvatar] = useState(AVATARS[0]);
 
+  const totalSteps = accountType === 'individual' ? TOTAL_STEPS_INDIV : TOTAL_STEPS_FAMILY;
+
+  // Helper : step réel selon accountType
+  // Famille  : 1=Type 2=NomFamille 3=Infos 4=Profil 5=Age 6=HasLumios 7=Membres
+  // Individuel: 1=Type 2=Infos 3=Profil 4=Age 5=HasLumios
+  const infoStep    = accountType === 'family' ? 3 : 2;
+  const profileStep = accountType === 'family' ? 4 : 3;
+  const ageStep     = accountType === 'family' ? 5 : 4;
+  const lumiosStep  = accountType === 'family' ? 6 : 5;
+  const membersStep = 7; // famille only
+
   const validateStep = (): boolean => {
     const e: Record<string, string> = {};
-    if (signupStep === 2) {
-      if (!parentName.trim()) e.parentName = 'Prénom requis';
-      if (!email.includes('@')) e.email = 'Email invalide';
-      if (password.length < 6) e.password = 'Minimum 6 caractères';
+    if (signupStep === 2 && accountType === 'family') {
+      if (!familyName.trim()) e.familyName = 'Nom ou surnom requis';
     }
-    if (signupStep === 3) {
+    if (signupStep === infoStep) {
+      if (!parentFirstName.trim()) e.parentFirstName = 'Prénom requis';
+      if (!parentLastName.trim())  e.parentLastName  = 'Nom requis';
+      if (!email.includes('@'))    e.email = 'Email invalide';
+      if (password.length < 6)     e.password = 'Minimum 6 caractères';
+    }
+    if (signupStep === profileStep) {
       const err = validatePseudo(pseudo);
       if (err) e.pseudo = err;
     }
-    if (signupStep === 5 && hasLumios === null) {
+    if (signupStep === lumiosStep && hasLumios === null) {
       e.hasLumios = 'Veuillez choisir une option';
     }
     setErrors(e);
@@ -75,8 +106,8 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
   const handleNext = async () => {
     if (!validateStep()) return;
 
-    // DB checks
-    if (signupStep === 2) {
+    // #5 — Vérif email en temps réel (aussi au "Suivant" comme filet de sécurité)
+    if (signupStep === infoStep) {
       setIsLoading(true);
       const exists = await isEmailRegistered(email);
       setIsLoading(false);
@@ -86,7 +117,7 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
       }
     }
 
-    if (signupStep === 3) {
+    if (signupStep === profileStep) {
       setIsLoading(true);
       const taken = await isPseudoTaken(pseudo);
       setIsLoading(false);
@@ -96,13 +127,13 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
       }
     }
 
-    // Skip step 6 for individual accounts
-    if (signupStep === 5 && accountType === 'individual') {
+    // Individuel : après lumiosStep → finalize
+    if (signupStep === lumiosStep && accountType === 'individual') {
       await finalizeSignup();
       return;
     }
 
-    if (signupStep < TOTAL_STEPS) {
+    if (signupStep < totalSteps) {
       setSignupStep(s => s + 1);
     } else {
       await finalizeSignup();
@@ -111,14 +142,16 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
 
   const finalizeSignup = async () => {
     setIsLoading(true);
-    const { data: parentData, error: parentErr } = await createParentAccount(email, parentName, accountType);
+    const fullName = `${parentFirstName.trim()} ${parentLastName.trim()}`;
+    // #13 — passer le vrai mot de passe saisi par l'utilisateur
+    const { data: parentData, error: parentErr } = await createParentAccount(email, fullName, accountType, password);
     if (parentErr || !parentData) {
       setErrors({ hasLumios: 'Erreur création : ' + (parentErr?.message || 'L\'email est peut-être déjà utilisé.') });
       setIsLoading(false);
       return;
     }
 
-    // Créer le profil principal (le parent/joueur lui-même)
+    // Profil principal (le responsable / joueur)
     await createChildProfile({
       parentId: parentData.id,
       pseudo,
@@ -134,7 +167,7 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
       accountType,
     });
 
-    // Créer les filiations ajoutées
+    // Membres famille ajoutés
     for (const member of pendingMembers) {
       await createChildProfile({
         parentId: parentData.id,
@@ -159,6 +192,7 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
   const handleAddPendingMember = async () => {
     const err = validatePseudo(memberPseudo);
     if (err) { setErrors({ memberPseudo: err }); return; }
+    if (!memberFirstName.trim()) { setErrors({ memberFirstName: 'Prénom requis' }); return; }
 
     setIsLoading(true);
     const taken = await isPseudoTaken(memberPseudo);
@@ -168,25 +202,41 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
       return;
     }
 
+    // Si relation adulte → forcer 18+
+    const finalAge = ADULT_RELATIONS.includes(memberRelation) ? '18+' : memberAge;
+
     setPendingMembers(prev => [...prev, {
+      firstName: memberFirstName.trim(),
+      lastName: memberLastName.trim(),
       pseudo: memberPseudo,
       avatar: memberAvatar,
-      ageRange: memberAge
+      ageRange: finalAge,
+      relation: memberRelation,
     }]);
 
     setIsLoading(false);
     setAddingMember(false);
+    setMemberFirstName('');
+    setMemberLastName('');
     setMemberPseudo('');
     setErrors({});
   };
 
+  // #5 — Vérif email onBlur
+  const handleEmailBlur = async () => {
+    if (!email.includes('@')) return;
+    const exists = await isEmailRegistered(email);
+    if (exists) setErrors(prev => ({ ...prev, email: 'Cet email est déjà utilisé' }));
+  };
+
   const handleLogin = async () => {
     setIsLoading(true);
-    const { data: parentData, error } = await loginParent(email);
+    // #13/#15 — passer le mot de passe réel
+    const { data: parentData, error } = await loginParent(email, password);
     setIsLoading(false);
 
     if (error || !parentData) {
-      alert('Erreur: Vérifiez vos identifiants.');
+      setErrors({ password: 'Email ou mot de passe incorrect.' });
       return;
     }
     onAuthComplete(parentData);
@@ -194,10 +244,7 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
 
   const handleGuestJoin = () => {
     const err = validatePseudo(guestPseudo);
-    if (err) {
-      setErrors({ guestPseudo: err });
-      return;
-    }
+    if (err) { setErrors({ guestPseudo: err }); return; }
     const guest: GuestProfile = {
       tempId: `guest-${Date.now()}`,
       pseudo: guestPseudo,
@@ -222,7 +269,6 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
             transition={{ duration: 0.3 }}
             className="w-full max-w-sm flex flex-col items-center gap-6"
           >
-            {/* Logo */}
             <div className="flex flex-col items-center gap-4">
               <motion.div
                 className="w-24 h-24 gradient-lumios rounded-3xl flex items-center justify-center shadow-card animate-pulse-glow"
@@ -241,7 +287,6 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
               </div>
             </div>
 
-            {/* Balls visual */}
             <div className="flex items-center gap-3 my-1">
               {(['lumios-blue', 'lumios-red', 'lumios-green'] as const).map((c, i) => (
                 <motion.div
@@ -254,9 +299,7 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
               ))}
             </div>
 
-            {/* CTA Buttons */}
             <div className="w-full flex flex-col gap-3">
-              {/* ✨ Bouton Magique — Rejoindre une partie (Invité) */}
               <motion.button
                 className="w-full text-base py-5 rounded-2xl font-nunito font-black text-white shadow-lg flex items-center justify-center gap-2"
                 style={{ background: 'linear-gradient(135deg, hsl(var(--lumios-green)), hsl(var(--lumios-blue)))' }}
@@ -266,7 +309,6 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                 <Gamepad2 className="w-6 h-6" />
                 Rejoindre une partie
               </motion.button>
-
               <motion.button
                 className="btn-primary w-full text-base py-4"
                 whileTap={{ scale: 0.97 }}
@@ -285,12 +327,12 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
             </div>
 
             <p className="text-xs text-muted-foreground text-center px-4">
-              Rejoingnez sans compte ou créez un profil pour sauvegarder votre progression.
+              Rejoignez sans compte ou créez un profil pour sauvegarder votre progression.
             </p>
           </motion.div>
         )}
 
-        {/* ── GUEST (Invité) ────────────────────────────────────────────────── */}
+        {/* ── GUEST ────────────────────────────────────────────────────────── */}
         {view === 'guest' && (
           <motion.div
             key="guest"
@@ -311,7 +353,6 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                 <p className="text-muted-foreground text-xs">Jouez sans créer de compte !</p>
               </div>
             </div>
-
             <div className="flex flex-col gap-4">
               <Field label="Votre Pseudo" error={errors.guestPseudo}>
                 <input
@@ -323,7 +364,6 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                 />
                 <p className="text-xs text-muted-foreground mt-1 text-right">{guestPseudo.length}/20</p>
               </Field>
-
               <div>
                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 block">Avatar rapide</label>
                 <div className="grid grid-cols-6 gap-2">
@@ -333,9 +373,7 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                       whileTap={{ scale: 0.9 }}
                       onClick={() => setGuestAvatar(a)}
                       className={`aspect-square rounded-xl text-2xl flex items-center justify-center transition-all ${
-                        guestAvatar === a
-                          ? 'gradient-lumios glow-ring scale-105'
-                          : 'bg-muted hover:bg-muted/80'
+                        guestAvatar === a ? 'gradient-lumios glow-ring scale-105' : 'bg-muted hover:bg-muted/80'
                       }`}
                     >
                       {a}
@@ -343,7 +381,6 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                   ))}
                 </div>
               </div>
-
               <motion.button
                 className="w-full text-base py-4 rounded-2xl font-nunito font-black text-white shadow-lg flex items-center justify-center gap-2"
                 style={{ background: 'linear-gradient(135deg, hsl(var(--lumios-green)), hsl(var(--lumios-blue)))' }}
@@ -369,9 +406,8 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
             <button onClick={() => setView('welcome')} className="flex items-center gap-1 text-muted-foreground mb-6 text-sm font-semibold">
               <ChevronLeft className="w-4 h-4" /> Retour
             </button>
-            <h2 className="text-2xl font-nunito font-black mb-1" style={{ color: 'hsl(var(--foreground))' }}>Connexion</h2>
+            <h2 className="text-2xl font-nunito font-black mb-1">Connexion</h2>
             <p className="text-muted-foreground text-sm mb-6">Bienvenue ! Connectez votre compte.</p>
-
             <div className="flex flex-col gap-4">
               <Field label="Email" error={errors.email}>
                 <input className="input-lumios" type="email" placeholder="email@example.fr" value={email} onChange={e => setEmail(e.target.value)} />
@@ -402,15 +438,18 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
           >
             {/* Header */}
             <div className="flex items-center gap-3 mb-5">
-              <button onClick={() => signupStep > 1 ? setSignupStep(s => s - 1) : setView('welcome')} className="text-muted-foreground">
+              <button
+                onClick={() => signupStep > 1 ? setSignupStep(s => s - 1) : setView('welcome')}
+                className="text-muted-foreground"
+              >
                 <ChevronLeft className="w-5 h-5" />
               </button>
               <div className="flex-1">
                 <div className="progress-bar">
-                  <div className="progress-bar-fill" style={{ width: `${(signupStep / (accountType === 'individual' ? 5 : TOTAL_STEPS)) * 100}%` }} />
+                  <div className="progress-bar-fill" style={{ width: `${(signupStep / totalSteps) * 100}%` }} />
                 </div>
               </div>
-              <span className="text-xs font-bold text-muted-foreground">{signupStep}/{accountType === 'individual' ? 5 : TOTAL_STEPS}</span>
+              <span className="text-xs font-bold text-muted-foreground">{signupStep}/{totalSteps}</span>
             </div>
 
             <AnimatePresence mode="wait">
@@ -421,7 +460,7 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.2 }}
               >
-                {/* Step 1 — Type de compte */}
+                {/* ── Step 1 — Type de compte ───────────────────────────────────── */}
                 {signupStep === 1 && (
                   <div className="flex flex-col gap-4">
                     <div>
@@ -438,9 +477,7 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                           whileTap={{ scale: 0.97 }}
                           onClick={() => setAccountType(opt.val)}
                           className={`flex items-start gap-4 p-5 rounded-2xl border-2 text-left transition-all ${
-                            accountType === opt.val
-                              ? 'border-primary bg-primary/5 glow-ring'
-                              : 'border-border bg-card'
+                            accountType === opt.val ? 'border-primary bg-primary/5 glow-ring' : 'border-border bg-card'
                           }`}
                         >
                           <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
@@ -466,20 +503,78 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                   </div>
                 )}
 
-                {/* Step 2 — Infos personnelles */}
-                {signupStep === 2 && (
+                {/* ── Step 2 (famille) — Nom/surnom de la famille ── #2 ───────── */}
+                {signupStep === 2 && accountType === 'family' && (
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <h2 className="text-xl font-nunito font-black mb-0.5">🏡 Votre famille</h2>
+                      <p className="text-muted-foreground text-sm">Comment appelle-t-on votre famille ?</p>
+                    </div>
+                    <Field label="Nom ou surnom de la famille" error={errors.familyName}>
+                      <input
+                        className="input-lumios text-lg font-bold"
+                        placeholder="ex: Les Dupont, La Team Martin…"
+                        maxLength={30}
+                        value={familyName}
+                        onChange={e => setFamilyName(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1 text-right">{familyName.length}/30</p>
+                    </Field>
+                    {familyName.trim() && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="p-4 rounded-2xl text-center"
+                        style={{ background: 'linear-gradient(135deg, hsl(var(--primary)/0.1), hsl(var(--lumios-blue)/0.1))' }}
+                      >
+                        <p className="text-2xl mb-1">🏆</p>
+                        <p className="font-nunito font-black text-lg" style={{ color: 'hsl(var(--primary))' }}>
+                          {familyName.trim()}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">Bienvenue sur Lumios Play !</p>
+                      </motion.div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Step infoStep — Infos responsable / créateur — #3 & #4 ─── */}
+                {signupStep === infoStep && (
                   <div className="flex flex-col gap-4">
                     <div>
                       <h2 className="text-xl font-nunito font-black mb-0.5">
-                        {accountType === 'family' ? 'Compte du parent' : 'Vos informations'}
+                        {accountType === 'family' ? `Responsable — ${familyName || 'la famille'}` : 'Vos informations'}
                       </h2>
                       <p className="text-muted-foreground text-sm">Vos données restent privées.</p>
                     </div>
-                    <Field label="Prénom" error={errors.parentName}>
-                      <input className="input-lumios" placeholder="Marie" value={parentName} onChange={e => setParentName(e.target.value)} />
-                    </Field>
+                    {/* #4 — Deux champs séparés */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Prénom" error={errors.parentFirstName}>
+                        <input
+                          className="input-lumios"
+                          placeholder="Marie"
+                          value={parentFirstName}
+                          onChange={e => setParentFirstName(e.target.value)}
+                        />
+                      </Field>
+                      <Field label="Nom" error={errors.parentLastName}>
+                        <input
+                          className="input-lumios"
+                          placeholder="Dupont"
+                          value={parentLastName}
+                          onChange={e => setParentLastName(e.target.value)}
+                        />
+                      </Field>
+                    </div>
+                    {/* #5 — Alerte email dès onBlur */}
                     <Field label="Email" error={errors.email}>
-                      <input className="input-lumios" type="email" placeholder="marie@email.fr" value={email} onChange={e => setEmail(e.target.value)} />
+                      <input
+                        className="input-lumios"
+                        type="email"
+                        placeholder="marie@email.fr"
+                        value={email}
+                        onChange={e => { setEmail(e.target.value); setErrors(prev => ({ ...prev, email: '' })); }}
+                        onBlur={handleEmailBlur}
+                      />
                     </Field>
                     <Field label="Mot de passe" error={errors.password}>
                       <div className="relative">
@@ -492,13 +587,13 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                   </div>
                 )}
 
-                {/* Step 3 — Pseudo + Avatar */}
-                {signupStep === 3 && (
+                {/* ── Step profileStep — Pseudo + Avatar ───────────────────────── */}
+                {signupStep === profileStep && (
                   <div className="flex flex-col gap-4">
                     <div>
                       <h2 className="text-xl font-nunito font-black mb-0.5">Votre profil joueur</h2>
                       <p className="text-muted-foreground text-sm">
-                        {accountType === 'family' ? 'C\'est votre profil de jeu en tant que parent.' : 'Visible par les autres joueurs.'}
+                        {accountType === 'family' ? 'C\'est votre profil de jeu en tant que responsable.' : 'Visible par les autres joueurs.'}
                       </p>
                     </div>
                     <Field label="Pseudo" error={errors.pseudo}>
@@ -531,8 +626,8 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                   </div>
                 )}
 
-                {/* Step 4 — Age range */}
-                {signupStep === 4 && (
+                {/* ── Step ageStep — Tranche d'âge ─────────────────────────────── */}
+                {signupStep === ageStep && (
                   <div className="flex flex-col gap-4">
                     <div>
                       <h2 className="text-xl font-nunito font-black mb-0.5">Tranche d'âge</h2>
@@ -545,9 +640,7 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                           whileTap={{ scale: 0.98 }}
                           onClick={() => setAgeRange(ar.value)}
                           className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
-                            ageRange === ar.value
-                              ? 'border-primary bg-primary/5'
-                              : 'border-border bg-card hover:border-border/80'
+                            ageRange === ar.value ? 'border-primary bg-primary/5' : 'border-border bg-card hover:border-border/80'
                           }`}
                         >
                           <div className="text-left">
@@ -565,8 +658,8 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                   </div>
                 )}
 
-                {/* Step 5 — Has Lumios? */}
-                {signupStep === 5 && (
+                {/* ── Step lumiosStep — Has Lumios? ─────────────────────────────── */}
+                {signupStep === lumiosStep && (
                   <div className="flex flex-col gap-5">
                     <div>
                       <h2 className="text-xl font-nunito font-black mb-0.5">Possédez-vous un Lumios ?</h2>
@@ -583,9 +676,7 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                           whileTap={{ scale: 0.96 }}
                           onClick={() => setHasLumios(opt.val)}
                           className={`flex-1 flex flex-col items-center gap-2 p-5 rounded-3xl border-2 transition-all ${
-                            hasLumios === opt.val
-                              ? 'border-primary bg-primary/5 glow-ring'
-                              : 'border-border bg-card'
+                            hasLumios === opt.val ? 'border-primary bg-primary/5 glow-ring' : 'border-border bg-card'
                           }`}
                         >
                           <span className="text-4xl">{opt.emoji}</span>
@@ -597,12 +688,12 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                   </div>
                 )}
 
-                {/* Step 6 — Ajouter des membres (Famille only) */}
-                {signupStep === 6 && accountType === 'family' && (
+                {/* ── Step membersStep (7) — Membres famille ───────────────────── */}
+                {signupStep === membersStep && accountType === 'family' && (
                   <div className="flex flex-col gap-4">
                     <div>
-                      <h2 className="text-xl font-nunito font-black mb-0.5">Votre famille</h2>
-                      <p className="text-muted-foreground text-sm">Ajoutez des membres qui joueront avec Lumios.</p>
+                      <h2 className="text-xl font-nunito font-black mb-0.5">🏡 {familyName || 'Votre famille'}</h2>
+                      <p className="text-muted-foreground text-sm">Ajoutez les membres qui joueront avec Lumios.</p>
                     </div>
 
                     {!addingMember ? (
@@ -611,10 +702,13 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                           <div key={i} className="flex items-center gap-3 p-3 bg-muted rounded-xl">
                             <div className="w-10 h-10 gradient-lumios rounded-xl flex items-center justify-center text-lg">{pm.avatar}</div>
                             <div className="flex-1">
-                              <p className="font-nunito font-bold text-sm">{pm.pseudo}</p>
-                              <p className="text-xs text-muted-foreground">{pm.ageRange} ans</p>
+                              <p className="font-nunito font-bold text-sm">{pm.firstName} {pm.lastName} — <span className="text-muted-foreground">@{pm.pseudo}</span></p>
+                              <p className="text-xs text-muted-foreground">{pm.relation} · {pm.ageRange} ans</p>
                             </div>
-                            <button onClick={() => setPendingMembers(prev => prev.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-accent p-2">
+                            <button
+                              onClick={() => setPendingMembers(prev => prev.filter((_, idx) => idx !== i))}
+                              className="text-muted-foreground hover:text-accent p-2"
+                            >
                               Sup.
                             </button>
                           </div>
@@ -630,7 +724,7 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                           </div>
                           <div className="text-left">
                             <p className="font-nunito font-bold text-sm">Ajouter un membre</p>
-                            <p className="text-xs text-muted-foreground">Enfant, frère, sœur…</p>
+                            <p className="text-xs text-muted-foreground">Enfant, frère, sœur, père, mère…</p>
                           </div>
                         </motion.button>
 
@@ -640,8 +734,17 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                       </div>
                     ) : (
                       <div className="flex flex-col gap-3 p-4 bg-muted/30 rounded-2xl border border-border">
-                        <Field label="Pseudo du membre" error={errors.memberPseudo}>
-                          <input className="input-lumios" placeholder="Pseudo de l'enfant" maxLength={20} value={memberPseudo} onChange={e => { setMemberPseudo(e.target.value); setErrors({}); }} />
+                        {/* #3 — Prénom + Nom du membre */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <Field label="Prénom" error={errors.memberFirstName}>
+                            <input className="input-lumios" placeholder="Léo" maxLength={20} value={memberFirstName} onChange={e => { setMemberFirstName(e.target.value); setErrors({}); }} />
+                          </Field>
+                          <Field label="Nom" error={errors.memberLastName}>
+                            <input className="input-lumios" placeholder="Dupont" maxLength={30} value={memberLastName} onChange={e => setMemberLastName(e.target.value)} />
+                          </Field>
+                        </div>
+                        <Field label="Pseudo (pseudo de jeu)" error={errors.memberPseudo}>
+                          <input className="input-lumios" placeholder="LeoFire" maxLength={20} value={memberPseudo} onChange={e => { setMemberPseudo(e.target.value); setErrors({}); }} />
                         </Field>
                         <div>
                           <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 block">Avatar</label>
@@ -653,26 +756,40 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
                             ))}
                           </div>
                         </div>
-                        <div>
-                          <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 block">Âge</label>
-                          <div className="grid grid-cols-2 gap-2">
-                            {AGE_RANGES.slice(0, 4).map(ar => (
-                              <button key={ar.value} onClick={() => setMemberAge(ar.value)} className={`p-2 rounded-xl text-xs font-bold border-2 transition-all ${memberAge === ar.value ? 'border-primary bg-primary/5' : 'border-border bg-card'}`}>
-                                {ar.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
+                        {/* #1 — Lien de parenté avec Père/Mère */}
                         <div>
                           <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 block">Lien de parenté</label>
                           <div className="flex flex-wrap gap-2">
                             {FAMILY_RELATIONS.map(r => (
-                              <button key={r} onClick={() => setMemberRelation(r)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${memberRelation === r ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground'}`}>
+                              <button
+                                key={r}
+                                onClick={() => {
+                                  setMemberRelation(r);
+                                  if (ADULT_RELATIONS.includes(r)) setMemberAge('18+');
+                                }}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${memberRelation === r ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground'}`}
+                              >
                                 {r}
                               </button>
                             ))}
                           </div>
                         </div>
+                        {/* Âge — masqué si relation adulte */}
+                        {!ADULT_RELATIONS.includes(memberRelation) && (
+                          <div>
+                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 block">Âge</label>
+                            <div className="grid grid-cols-2 gap-2">
+                              {AGE_RANGES.slice(0, 4).map(ar => (
+                                <button key={ar.value} onClick={() => setMemberAge(ar.value)} className={`p-2 rounded-xl text-xs font-bold border-2 transition-all ${memberAge === ar.value ? 'border-primary bg-primary/5' : 'border-border bg-card'}`}>
+                                  {ar.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {ADULT_RELATIONS.includes(memberRelation) && (
+                          <p className="text-xs text-muted-foreground italic">🔒 Adulte +18 ans (automatique pour Père / Mère)</p>
+                        )}
                         <div className="flex gap-2 mt-1">
                           <button className="btn-glass flex-1 py-2.5 text-sm" onClick={() => setAddingMember(false)}>Annuler</button>
                           <button className="btn-primary flex-1 py-2.5 text-sm" onClick={handleAddPendingMember} disabled={isLoading}>
@@ -694,7 +811,7 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
               disabled={isLoading}
             >
               {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (
-                signupStep === TOTAL_STEPS || (signupStep === 5 && accountType === 'individual')
+                signupStep === totalSteps || (signupStep === lumiosStep && accountType === 'individual')
                   ? 'Créer mon compte 🎉'
                   : <><span>Suivant</span> <ChevronRight className="w-5 h-5" /></>
               )}

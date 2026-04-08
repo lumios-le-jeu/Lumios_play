@@ -120,7 +120,8 @@ io.on('connection', (socket) => {
 
   // ── CREATE LOBBY (Duel or Arena) ───────────────────────────────────────────
   socket.on('create-lobby', (data) => {
-    const code = generateCode();
+    // #14 — Utiliser le code proposé par le client (pour affichage QR instantané) ou en générer un
+    const code = data.lobbyId || generateCode();
     const lobby = {
       id: code,
       hostId: socket.id,
@@ -133,7 +134,7 @@ io.on('connection', (socket) => {
       maxPlayers: data.maxPlayers || (data.mode === 'duel' ? 2 : 10),
       isPrivate: !!data.isPrivate,
       status: 'open',
-      players: { [socket.id]: { pseudo: data.hostPseudo, profileId: data.hostProfileId, elo: data.hostElo || 800 } },
+      players: { [socket.id]: { pseudo: data.hostPseudo, profileId: data.hostProfileId, elo: data.hostElo || 800, avatarEmoji: data.hostAvatarEmoji || '🎮' } },
       votes: {}, // Pour stocker les déclarations de vainqueur
       createdAt: Date.now(),
     };
@@ -183,7 +184,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    lobby.players[socket.id] = { pseudo, profileId: data.profileId, elo: data.elo || 800 };
+    lobby.players[socket.id] = { pseudo, profileId: data.profileId, elo: data.elo || 800, avatarEmoji: data.avatarEmoji || '🎮' };
     socket.join(`lobby-${lobbyId}`);
     socketMap[socket.id] = { type: lobby.mode, code: lobbyId };
 
@@ -192,13 +193,97 @@ io.on('connection', (socket) => {
       playerId: socket.id, 
       pseudo, 
       profileId: data.profileId, 
-      elo: data.elo || 800 
+      elo: data.elo || 800,
+      avatarEmoji: data.avatarEmoji || '🎮'
     });
 
     // Envoyer l'état complet au nouveau joueur
     socket.emit('lobby-state', lobby);
 
     console.log(`[LOBBY:JOIN] Code=${lobbyId} Player=${pseudo}`);
+  });
+
+  // ── SUBMIT SCORE (double validation — les deux joueurs doivent voter le même vainqueur) ─
+  socket.on('submit-score', async (data) => {
+    const { lobbyId, voterId, winnerId } = data;
+    const lobby = duels[lobbyId];
+    if (!lobby) { socket.emit('error', 'Lobby introuvable'); return; }
+
+    // Stocker le vote de ce joueur
+    lobby.votes[voterId] = { winnerId, data };
+
+    const voteEntries = Object.entries(lobby.votes);
+    console.log(`[VOTE] Lobby=${lobbyId} Player=${voterId} Winner=${winnerId} (${voteEntries.length}/2 votes)`);
+
+    if (voteEntries.length >= 2) {
+      const [, vote1] = voteEntries[0];
+      const [, vote2] = voteEntries[1];
+
+      if (vote1.winnerId === vote2.winnerId && vote1.data.scoreDetail === vote2.data.scoreDetail) {
+        // ✅ Consensus — on utilise les données du premier vote (hôte en priorité)
+        const masterVote = lobby.votes[lobby.hostProfileId]?.data || vote1.data;
+
+        lobby.status = 'ended';
+
+        if (supabase) {
+          try {
+            // 1. Enregistrer le match
+            await supabase.from('matches').insert([{
+              player1_id: masterVote.p1Id,
+              player2_id: masterVote.p2Id,
+              winner_id: masterVote.winnerId,
+              score: masterVote.score,
+              score_detail: masterVote.scoreDetail,
+              match_mode: masterVote.matchMode,
+              match_type: 'duel',
+              step_change_p1: masterVote.stepChangeP1,
+              step_change_p2: masterVote.stepChangeP2,
+              comment_winner: masterVote.commentWinner,
+              comment_loser: masterVote.commentLoser,
+              media_url: masterVote.mediaUrl,
+              validated_by_loser: true,
+            }]);
+
+            // 2. Mettre à jour le profil P1 (hôte)
+            if (masterVote.matchMode === 'competitive') {
+              await supabase.from('profiles').update({
+                rank_tier: masterVote.newTierP1,
+                rank_step: masterVote.newRankStepP1,
+              }).eq('id', masterVote.p1Id);
+
+              // 3. Mettre à jour le profil P2 (scanner)
+              await supabase.from('profiles').update({
+                rank_tier: masterVote.newTierP2,
+                rank_step: masterVote.newRankStepP2,
+              }).eq('id', masterVote.p2Id);
+            }
+
+            console.log(`[DB:OK] Match enregistré Lobby=${lobbyId} Winner=${masterVote.winnerId}`);
+          } catch (err) {
+            console.error('[DB:ERROR]', err);
+          }
+        }
+
+        // Notifier les deux joueurs
+        io.to(`lobby-${lobbyId}`).emit('game-finished', {
+          winnerId: masterVote.winnerId,
+          stepChangeP1: masterVote.stepChangeP1,
+          stepChangeP2: masterVote.stepChangeP2,
+          xpP1: masterVote.xpP1,
+          xpP2: masterVote.xpP2,
+          bonuses: masterVote.bonuses || [],
+        });
+
+      } else {
+        // ❌ Désaccord — on reset les votes et on demande de réessayer
+        lobby.votes = {};
+        console.log(`[MISMATCH] Lobby=${lobbyId} Vote1=${vote1.winnerId} Vote2=${vote2.winnerId}`);
+        io.to(`lobby-${lobbyId}`).emit('result-mismatch', {
+          message: 'Les scores ne correspondent pas. Vérifiez ensemble le résultat et re-saisissez.',
+        });
+      }
+    }
+    // Si seulement 1 vote, on attend le second silencieusement
   });
 
   // ── START GAME (host only) ─────────────────────────────────────────────────

@@ -1,21 +1,30 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp, TrendingDown, Award, Lock, Loader2, Trophy, RotateCcw, Flame, Star } from 'lucide-react';
+import { TrendingUp, TrendingDown, Award, Lock, Loader2, Trophy, RotateCcw, Flame, Star, Calendar } from 'lucide-react';
 import type { ChildProfile } from '../../lib/types';
-import { getTierConfig, RANK_TIERS } from '../../lib/types';
+import { getTierConfig, RANK_TIERS, getCurrentGameSeason } from '../../lib/types';
 import { fromGlobalStep, getRankDisplayName, getRankProgress, getNextRankName } from '../../lib/ranking';
 import { formatStepChange } from '../../lib/utils';
 import { getMatchHistory } from '../../lib/api';
 
 const BADGES = [
-  { id: 'b1', name: 'Fair-Play',   icon: '🤝', desc: 'Jouer et valider 10 défaites sans quitter.', earned: false },
-  { id: 'b2', name: 'En Feu',      icon: '🔥', desc: 'Enchaîner 3 victoires consécutives en duel.', earned: false },
-  { id: 'b3', name: 'Globe-Trotter', icon: '🌍', desc: 'Participer à des matchs dans 3 villes différentes.', earned: false },
-  { id: 'b4', name: 'Champion',    icon: '🏆', desc: 'Remporter la première place d\'un tournoi.', earned: false },
-  { id: 'b5', name: 'First Blood', icon: '⚡', desc: 'Remporter sa toute première victoire sur Lumios.', earned: false },
-  { id: 'b6', name: 'Diplomate',   icon: '🕊️', desc: 'Avoir au moins 5 amis dans sa liste.', earned: false },
-  { id: 'b7', name: 'Marathonien', icon: '🏃', desc: 'Jouer un total de 50 matchs, victoires ou défaites.', earned: false },
-  { id: 'b8', name: 'Lumios Pro',  icon: '💎', desc: 'Atteindre le rang de Diamant.', earned: false },
+  { id: 'b1', name: 'Fair-Play',    icon: '🤝', desc: 'Jouer et valider 10 défaites sans quitter.', earned: false },
+  { id: 'b2', name: 'En Feu',       icon: '🔥', desc: 'Enchaîner 3 victoires consécutives en duel.', earned: false },
+  { id: 'b3', name: 'Globe-Trotter',icon: '🌍', desc: 'Participer à des matchs dans 3 villes différentes.', earned: false },
+  { id: 'b4', name: 'Champion',     icon: '🏆', desc: 'Remporter la première place d\'un tournoi.', earned: false },
+  { id: 'b5', name: 'First Blood',  icon: '⚡', desc: 'Remporter sa toute première victoire sur Lumios.', earned: false },
+  { id: 'b6', name: 'Diplomate',    icon: '🕊️', desc: 'Avoir au moins 5 amis dans sa liste.', earned: false },
+  { id: 'b7', name: 'Marathonien',  icon: '🏃', desc: 'Jouer un total de 50 matchs, victoires ou défaites.', earned: false },
+  { id: 'b8', name: 'Lumios Pro',   icon: '💎', desc: 'Atteindre le rang de Diamant.', earned: false },
+];
+
+type PeriodFilter = 'month' | 'season' | 'year' | 'all';
+
+const PERIOD_LABELS: { value: PeriodFilter; label: string }[] = [
+  { value: 'month',  label: 'Ce mois' },
+  { value: 'season', label: 'Saison' },
+  { value: 'year',   label: 'Année' },
+  { value: 'all',    label: 'Tout' },
 ];
 
 interface DashboardScreenProps {
@@ -27,6 +36,7 @@ export default function DashboardScreen({ profile, onRefreshProfile }: Dashboard
   const [matches, setMatches] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedBadge, setSelectedBadge] = useState<any | null>(null);
+  const [period, setPeriod] = useState<PeriodFilter>('month');
 
   const fetchMatches = async () => {
     setIsLoading(true);
@@ -35,27 +45,86 @@ export default function DashboardScreen({ profile, onRefreshProfile }: Dashboard
     setIsLoading(false);
   };
 
-  useEffect(() => {
-    fetchMatches();
-  }, [profile.id]);
+  useEffect(() => { fetchMatches(); }, [profile.id]);
 
   const handleManualRefresh = async () => {
     if (onRefreshProfile) await onRefreshProfile();
     await fetchMatches();
   };
 
-  // Rank info
+  // ── Filtrage par période ───────────────────────────────────────────────────────
+  const filteredMatches = useMemo(() => {
+    const now = new Date();
+    return matches.filter(m => {
+      const d = new Date(m.date);
+      if (period === 'all') return true;
+      if (period === 'month') {
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      }
+      if (period === 'season') {
+        const month = d.getMonth() + 1;
+        const season = getCurrentGameSeason();
+        if (season.season === 'spring')  return month >= 4  && month <= 6;
+        if (season.season === 'summer')  return month >= 7  && month <= 8;
+        if (season.season === 'autumn')  return month >= 9  && month <= 11;
+        if (season.season === 'winter')  return month === 12 || month <= 3;
+      }
+      if (period === 'year') {
+        return d.getFullYear() === now.getFullYear();
+      }
+      return true;
+    });
+  }, [matches, period]);
+
+  // ── Graphe d'évolution du rang ─────────────────────────────────────────────────
+  // On reconstitue l'évolution du rang sur les 12 derniers mois
+  const rankEvolution = useMemo(() => {
+    const now = new Date();
+    const months: { label: string; step: number }[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const label = new Intl.DateTimeFormat('fr-FR', { month: 'short' }).format(d);
+      // Calcul du rank_step reconstruit à partir de l'historique
+      const matchesUpToMonth = matches.filter(m => {
+        const md = new Date(m.date);
+        return md <= new Date(d.getFullYear(), d.getMonth() + 1, 0);
+      });
+      // Step simulé : on part du step actuel et on "remonte" en inversant les changements
+      let step = profile.rankStep;
+      for (const m of matches) {
+        const md = new Date(m.date);
+        if (md > new Date(d.getFullYear(), d.getMonth() + 1, 0)) {
+          step -= m.stepChange;
+        }
+      }
+      months.push({ label, step: Math.max(0, step) });
+    }
+    return months;
+  }, [matches, profile.rankStep]);
+
+  // Min/Max pour normaliser le graphe
+  const minStep = Math.min(...rankEvolution.map(m => m.step));
+  const maxStep = Math.max(...rankEvolution.map(m => m.step));
+  const range = Math.max(1, maxStep - minStep);
+
+  // ── Rank info ────────────────────────────────────────────────────────────────
   const rankInfo = fromGlobalStep(profile.rankStep);
   const tierCfg = getTierConfig(rankInfo.tier);
   const rankName = getRankDisplayName(profile.rankTier, profile.rankStep);
   const progress = getRankProgress(profile.rankStep);
   const nextRank = getNextRankName(profile.rankStep);
 
-  // Stats
-  const competitiveMatches = matches.filter(m => m.matchMode === 'competitive');
-  const wins = matches.filter(m => m.won).length;
-  const losses = matches.filter(m => !m.won).length;
-  const ratio = (wins + losses) > 0 ? Math.round((wins / (wins + losses)) * 100) : 0;
+  // ── Stats filtrés ─────────────────────────────────────────────────────────────
+  const wins   = filteredMatches.filter(m => m.won).length;
+  const losses = filteredMatches.filter(m => !m.won).length;
+  const ratio  = (wins + losses) > 0 ? Math.round((wins / (wins + losses)) * 100) : 0;
+
+  const seasonInfo = getCurrentGameSeason();
+  const periodDisplayLabel = period === 'month'
+    ? new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' }).format(new Date())
+    : period === 'season' ? `${seasonInfo.label} ${seasonInfo.months}`
+    : period === 'year' ? `Année ${new Date().getFullYear()}`
+    : 'Tout';
 
   return (
     <div className="screen-wrapper">
@@ -71,7 +140,26 @@ export default function DashboardScreen({ profile, onRefreshProfile }: Dashboard
         </button>
       </div>
 
-      {/* ── RANK CARD (Paliers) ─────────────────────────────────────────────── */}
+      {/* ── Filtre de période — #8 ─────────────────────────────────────────────── */}
+      <div className="flex bg-muted rounded-2xl p-1 mb-5">
+        {PERIOD_LABELS.map(p => (
+          <button
+            key={p.value}
+            onClick={() => setPeriod(p.value)}
+            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all font-nunito ${period === p.value ? 'bg-white shadow-sm text-primary' : 'text-muted-foreground'}`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Période active */}
+      <div className="flex items-center gap-2 mb-4 px-1">
+        <Calendar className="w-4 h-4 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground capitalize">{periodDisplayLabel}</span>
+      </div>
+
+      {/* ── RANK CARD ─────────────────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -84,26 +172,18 @@ export default function DashboardScreen({ profile, onRefreshProfile }: Dashboard
       >
         <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full" />
         <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-white/10 rounded-full" />
-
         <div className="relative">
-          {/* Tier name + icon */}
           <div className="flex items-center gap-2 mb-3">
             <span className="text-2xl">{tierCfg.icon}</span>
             <span className="font-nunito font-bold text-white/90 text-lg">{rankName}</span>
           </div>
-
-          {/* Steps visualization */}
           {rankInfo.tier !== 'mythic' && (
             <div className="mb-4">
               <div className="flex gap-1.5 mb-2">
                 {Array.from({ length: progress.totalSteps }).map((_, i) => (
                   <div
                     key={i}
-                    className={`flex-1 h-3 rounded-full transition-all ${
-                      i < progress.currentStep
-                        ? 'bg-white shadow-sm'
-                        : 'bg-white/25'
-                    }`}
+                    className={`flex-1 h-3 rounded-full transition-all ${i < progress.currentStep ? 'bg-white shadow-sm' : 'bg-white/25'}`}
                   />
                 ))}
               </div>
@@ -113,24 +193,78 @@ export default function DashboardScreen({ profile, onRefreshProfile }: Dashboard
               </div>
             </div>
           )}
-
-          {/* Mythique badge */}
           {rankInfo.tier === 'mythic' && (
             <div className="mb-4 p-3 bg-white/15 rounded-2xl text-center">
-              <p className="text-sm font-black">🔥 TOP 100 Mondial</p>
+              <p className="text-sm font-black">🔥 TOP 100 National</p>
               <p className="text-xs text-white/70 mt-0.5">Classement Mythique par XP de saison</p>
             </div>
           )}
         </div>
       </motion.div>
 
-      {/* ── Season XP + Win Streak ─────────────────────────────────────────── */}
+      {/* ── Graphe d'évolution du rang — #8 ──────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.08 }}
+        className="card-lumios p-4 mb-4"
+      >
+        <div className="flex items-center justify-between mb-3">
+          <p className="font-nunito font-black text-sm">Évolution du rang</p>
+          <Trophy className="w-4 h-4 text-muted-foreground" />
+        </div>
+        <div className="relative h-20">
+          <svg viewBox={`0 0 ${rankEvolution.length * 20} 60`} className="w-full h-full overflow-visible">
+            {/* Grille */}
+            {[0, 20, 40, 60].map(y => (
+              <line key={y} x1="0" y1={y} x2={rankEvolution.length * 20} y2={y} stroke="hsl(var(--border))" strokeWidth="0.5" />
+            ))}
+            {/* Ligne d'évolution */}
+            <polyline
+              fill="none"
+              stroke={tierCfg.color}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              points={rankEvolution.map((m, i) => {
+                const x = i * 20 + 10;
+                const y = 55 - ((m.step - minStep) / range) * 50;
+                return `${x},${y}`;
+              }).join(' ')}
+            />
+            {/* Points */}
+            {rankEvolution.map((m, i) => {
+              const x = i * 20 + 10;
+              const y = 55 - ((m.step - minStep) / range) * 50;
+              const isLast = i === rankEvolution.length - 1;
+              return (
+                <circle
+                  key={i}
+                  cx={x}
+                  cy={y}
+                  r={isLast ? 4 : 3}
+                  fill={isLast ? tierCfg.color : 'hsl(var(--background))'}
+                  stroke={tierCfg.color}
+                  strokeWidth="2"
+                />
+              );
+            })}
+          </svg>
+        </div>
+        {/* Labels axe X */}
+        <div className="flex justify-between mt-1">
+          {rankEvolution.filter((_, i) => i % 3 === 0 || i === rankEvolution.length - 1).map((m, i) => (
+            <span key={i} className="text-[9px] text-muted-foreground capitalize">{m.label}</span>
+          ))}
+        </div>
+      </motion.div>
+
+      {/* ── Season XP + Win Streak ─────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         className="grid grid-cols-2 gap-3 mb-4"
       >
-        {/* Season XP */}
         <div className="card-lumios p-4">
           <div className="flex items-center gap-2 mb-2">
             <Star className="w-4 h-4 text-amber-500" />
@@ -139,12 +273,8 @@ export default function DashboardScreen({ profile, onRefreshProfile }: Dashboard
           <p className="font-nunito font-black text-2xl" style={{ color: 'hsl(var(--golden))' }}>
             {profile.seasonXp}
           </p>
-          <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">
-            Avril 2026
-          </p>
+          <p className="text-[10px] text-muted-foreground font-semibold mt-0.5 capitalize">{periodDisplayLabel}</p>
         </div>
-
-        {/* Win Streak */}
         <div className="card-lumios p-4">
           <div className="flex items-center gap-2 mb-2">
             <Flame className={`w-4 h-4 ${profile.winStreak >= 3 ? 'text-orange-500' : 'text-muted-foreground'}`} />
@@ -160,16 +290,16 @@ export default function DashboardScreen({ profile, onRefreshProfile }: Dashboard
         </div>
       </motion.div>
 
-      {/* ── Stats Grid ────────────────────────────────────────────────────────── */}
+      {/* ── Stats Grid ─────────────────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         className="grid grid-cols-3 gap-3 mb-5"
       >
         {[
-          { label: 'Victoires', value: wins, color: 'lumios-green', icon: '🏆' },
-          { label: 'Défaites',  value: losses, color: 'lumios-red', icon: '💀' },
-          { label: 'Ratio',     value: `${ratio}%`, color: 'lumios-blue', icon: '📊' },
+          { label: 'Victoires', value: wins,        color: 'lumios-green', icon: '🏆' },
+          { label: 'Défaites',  value: losses,      color: 'lumios-red',   icon: '💀' },
+          { label: 'Ratio',     value: `${ratio}%`, color: 'lumios-blue',  icon: '📊' },
         ].map(stat => (
           <div key={stat.label} className="card-lumios p-3 text-center">
             <p className="text-xl mb-1">{stat.icon}</p>
@@ -179,7 +309,7 @@ export default function DashboardScreen({ profile, onRefreshProfile }: Dashboard
         ))}
       </motion.div>
 
-      {/* ── Badges ────────────────────────────────────────────────────────────── */}
+      {/* ── Badges ─────────────────────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -203,7 +333,7 @@ export default function DashboardScreen({ profile, onRefreshProfile }: Dashboard
         </div>
       </motion.div>
 
-      {/* Badge Detail Modal */}
+      {/* Badge Modal */}
       <AnimatePresence>
         {selectedBadge && (
           <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedBadge(null)}>
@@ -223,7 +353,7 @@ export default function DashboardScreen({ profile, onRefreshProfile }: Dashboard
         )}
       </AnimatePresence>
 
-      {/* ── Recent Matches ─────────────────────────────────────────────────────── */}
+      {/* ── Derniers matchs (filtrés) ─────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -233,9 +363,9 @@ export default function DashboardScreen({ profile, onRefreshProfile }: Dashboard
         <div className="flex flex-col gap-2">
           {isLoading ? (
             <div className="flex justify-center p-5"><Loader2 className="animate-spin text-primary w-6 h-6" /></div>
-          ) : matches.length === 0 ? (
-            <div className="text-center p-5 text-muted-foreground text-sm card-lumios">Aucun match joué.</div>
-          ) : matches.map((match, i) => (
+          ) : filteredMatches.length === 0 ? (
+            <div className="text-center p-5 text-muted-foreground text-sm card-lumios">Aucun match sur cette période.</div>
+          ) : filteredMatches.map((match, i) => (
             <motion.div
               key={match.id}
               initial={{ opacity: 0, x: -10 }}

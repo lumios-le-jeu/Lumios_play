@@ -14,7 +14,8 @@ export default function TournamentBracket({ competition, onUpdate }: TournamentB
   const totalRounds = getTotalRounds(competition.players.length);
 
   const handleDeclareWinner = (match: CompetitionMatch, winner: CompetitionPlayer) => {
-    if (match.winner) return;
+    // On ne peut pas déclarer un vainqueur sur un bye
+    if (match.winner || match.isBye) return;
     const updated = declareWinner(competition.matches, match.id, winner);
 
     // Check if champion
@@ -101,6 +102,21 @@ function MatchCard({ match, onDeclare }: {
   onDeclare: (match: CompetitionMatch, winner: CompetitionPlayer) => void;
 }) {
   const isComplete = !!match.winner;
+
+  // Match BYE #16
+  if (match.isBye && match.player1) {
+    return (
+      <div className="card-lumios p-2 w-44 border-dashed opacity-70">
+        <div className="flex items-center gap-2 px-2 py-2">
+          <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ background: match.player1.color }} />
+          <span className="text-xs font-bold truncate flex-1">{match.player1.pseudo}</span>
+        </div>
+        <div className="px-2 py-1">
+          <span className="text-[10px] text-emerald-500 font-bold">🎯 Exempté (bye)</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="card-lumios p-2 w-44">

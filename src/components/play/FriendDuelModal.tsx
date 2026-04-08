@@ -16,14 +16,14 @@ interface FriendDuelModalProps {
   onClose: () => void;
 }
 
-type DuelStep = 'setup' | 'qr-host' | 'scanning' | 'matched' | 'playing' | 'score-entry' | 'comments' | 'result';
+type DuelStep = 'setup' | 'qr-host' | 'scanning' | 'joining' | 'matched' | 'playing' | 'score-entry' | 'comments' | 'result';
 
 export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: FriendDuelModalProps) {
   const [step, setStep] = useState<DuelStep>('setup');
   const [matchMode, setMatchMode] = useState<MatchMode>('competitive');
   const [gameCode, setGameCode] = useState('');
   const [isHost, setIsHost] = useState(false);
-  const [opponent, setOpponent] = useState<{ id: string; pseudo: string; elo: number; rankTier: string; rankStep: number } | null>(null);
+  const [opponent, setOpponent] = useState<{ id: string; pseudo: string; elo: number; rankTier: string; rankStep: number; avatarEmoji: string } | null>(null);
   const [result, setResult] = useState<{ winnerId: string; stepChangeP1: number; stepChangeP2: number; xpP1: number; xpP2: number; bonuses: string[] } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [manualCode, setManualCode] = useState('');
@@ -58,16 +58,19 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
         elo: data.elo,
         rankTier: data.rankTier || 'bronze',
         rankStep: data.rankStep ?? 0,
+        avatarEmoji: data.avatarEmoji || '🎮',
       });
       if (step !== 'result' && step !== 'score-entry' && step !== 'comments') setStep('matched');
     };
 
     const handleLobbyState = (lobby: any) => {
-      const opp = Object.entries(lobby.players).find(([sid, p]: any) => p.profileId !== profile.id);
+      const entries = Object.entries(lobby.players);
+      const opp = entries.find(([, p]: any) => p.profileId !== profile.id);
       if (opp) {
         const [, p]: [string, any] = opp;
-        setOpponent({ id: p.profileId, pseudo: p.pseudo, elo: p.elo, rankTier: p.rankTier || 'bronze', rankStep: p.rankStep ?? 0 });
-        setStep('matched');
+        setOpponent({ id: p.profileId, pseudo: p.pseudo, elo: p.elo, rankTier: p.rankTier || 'bronze', rankStep: p.rankStep ?? 0, avatarEmoji: p.avatarEmoji || '🎮' });
+        // #14 — both host and scanner transition to 'matched' when lobby-state is received
+        setStep(prev => (prev !== 'result' && prev !== 'score-entry' && prev !== 'comments') ? 'matched' : prev);
       }
     };
 
@@ -112,13 +115,19 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
       setIsHost(true);
       const socket = getSocket();
 
+      // #14 — Générer le code côté client immédiatement pour afficher le QR sans attendre le serveur
+      const clientCode = generateGameCode();
+      setGameCode(clientCode);
+
       const createLobby = (lat?: number, lng?: number) => {
         socket.emit('create-lobby', {
+          lobbyId: clientCode,   // on propose le code au serveur
           hostProfileId: profile.id,
           hostPseudo: profile.pseudo,
           hostElo: profile.elo,
           hostRankTier: profile.rankTier,
           hostRankStep: profile.rankStep,
+          hostAvatarEmoji: profile.avatarEmoji,
           mode: 'duel',
           matchMode,
           lat, lng,
@@ -157,8 +166,14 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
           (decodedText: string) => {
             html5QrCode.stop().then(() => {
               let code = decodedText;
-              try { const d = JSON.parse(decodedText); code = d.code || decodedText; } catch {}
+              try { const d = JSON.parse(decodedText); code = d.code || ''; } catch {}
+              // #14 — ignorer les codes vides (QR affiché avant que le serveur réponde)
+              if (!code || code.trim().length < 2) {
+                html5QrCode.start({ facingMode: 'environment' }, { fps: 15, qrbox: { width: 250, height: 250 } }, startScanner as any, () => {});
+                return;
+              }
               setGameCode(code);
+              setStep('joining');
               socket.emit('join-lobby', {
                 lobbyId: code,
                 profileId: profile.id,
@@ -166,6 +181,7 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
                 elo: profile.elo,
                 rankTier: profile.rankTier,
                 rankStep: profile.rankStep,
+                avatarEmoji: profile.avatarEmoji,
               });
             }).catch(() => {});
           }
@@ -196,7 +212,7 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
     setWinnerId(wId);
   };
 
-  // ── Submit result ──────────────────────────────────────────────────────────
+  // ── Submit result via socket (double validation) ──────────────────────────
   const handleSubmitResult = async () => {
     if (!opponent || !selectedScore || !winnerId) return;
     setIsProcessing(true);
@@ -213,7 +229,7 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
 
     const won = winnerId === profile.id;
 
-    // Calculate ranking changes
+    // Calculate ranking changes (used by server for DB write)
     const playerResult = calculateRankingUpdate(
       { tier: profile.rankTier, rankStep: profile.rankStep },
       { tier: opponent.rankTier as any, rankStep: opponent.rankStep },
@@ -229,56 +245,46 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
       matchMode,
     );
 
-    // Auto-validation: if the host (creator) lost and is submitting, auto-validate
-    const creatorIsLoser = isHost && !won;
-    const autoValidated = creatorIsLoser;
-
-    // Upload media if any
+    // Upload media first if any
     let mediaUrl: string | null = null;
     if (mediaFile) {
       mediaUrl = await uploadMatchMedia(mediaFile, `${Date.now()}`);
     }
 
-    // Submit to DB
+    // ✅ Envoyer le vote au serveur — pas d'écriture directe en DB
+    // Le serveur valide uniquement si les deux joueurs indiquent le même vainqueur
     const scoreStr = selectedScore.replace('-', ' - ');
-    await submitMatchResult({
-      player1Id: isHost ? profile.id : opponent.id,
-      player2Id: isHost ? opponent.id : profile.id,
+    getSocket().emit('submit-score', {
+      lobbyId: gameCode,
+      voterId: profile.id,
       winnerId,
       score: scoreStr,
       scoreDetail: selectedScore,
       matchMode,
-      matchType: 'duel',
-      stepChangeP1: isHost ? playerResult.stepChange : oppResult.stepChange,
-      stepChangeP2: isHost ? oppResult.stepChange : playerResult.stepChange,
-      commentWinner: won ? commentWinner : commentLoser,
-      commentLoser: won ? commentLoser : commentWinner,
-      mediaUrl: mediaUrl || undefined,
-      validatedByLoser: autoValidated,
-    });
-
-    // Update profiles if competitive
-    if (matchMode === 'competitive') {
-      await updateProfileRank(
-        profile.id,
-        playerResult.newTier,
-        playerResult.newRankStep,
-        profile.seasonXp + playerResult.xpChange,
-        won ? profile.winStreak + 1 : 0,
-      );
-    }
-
-    setResult({
-      winnerId,
+      isHost,
+      // P1 = hôte, P2 = scanner
+      p1Id: isHost ? profile.id : opponent.id,
+      p2Id: isHost ? opponent.id : profile.id,
       stepChangeP1: isHost ? playerResult.stepChange : oppResult.stepChange,
       stepChangeP2: isHost ? oppResult.stepChange : playerResult.stepChange,
       xpP1: isHost ? playerResult.xpChange : oppResult.xpChange,
       xpP2: isHost ? oppResult.xpChange : playerResult.xpChange,
       bonuses: playerResult.bonuses,
+      newRankStepP1: isHost ? playerResult.newRankStep : oppResult.newRankStep,
+      newTierP1: isHost ? playerResult.newTier : oppResult.newTier,
+      newRankStepP2: isHost ? oppResult.newRankStep : playerResult.newRankStep,
+      newTierP2: isHost ? oppResult.newTier : playerResult.newTier,
+      seasonXpP1New: isHost ? profile.seasonXp + playerResult.xpChange : opponent.elo,
+      seasonXpP2New: isHost ? opponent.elo : profile.seasonXp + playerResult.xpChange,
+      winStreakP1New: isHost ? (won ? profile.winStreak + 1 : 0) : (won ? 0 : opponent.rankStep),
+      commentWinner: won ? commentWinner : commentLoser,
+      commentLoser: won ? commentLoser : commentWinner,
+      mediaUrl: mediaUrl || null,
     });
 
+    // Marquer comme ayant voté — UI passe en attente
+    setHasVoted(true);
     setIsProcessing(false);
-    setStep('result');
   };
 
   const handleClose = async () => {
@@ -363,16 +369,24 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
               <div className={`px-3 py-1 rounded-lg text-xs font-bold ${matchMode === 'competitive' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
                 {matchMode === 'competitive' ? '🏆 Compétitif' : '⚔️ Amical'}
               </div>
-              <div className="p-5 bg-white rounded-3xl shadow-card-hover border border-border animate-pulse-glow">
-                <QRCodeSVG value={qrPayload} size={200} fgColor="hsl(217, 85%, 30%)" level="M" />
-              </div>
+              {/* #14 — Ne pas afficher le QR tant que le code est vide */}
+              {gameCode ? (
+                <div className="p-5 bg-white rounded-3xl shadow-card-hover border border-border animate-pulse-glow">
+                  <QRCodeSVG value={qrPayload} size={200} fgColor="hsl(217, 85%, 30%)" level="M" />
+                </div>
+              ) : (
+                <div className="w-[210px] h-[210px] flex items-center justify-center rounded-3xl border-2 border-dashed border-border bg-muted">
+                  <Loader2 className="w-10 h-10 animate-spin text-muted-foreground" />
+                </div>
+              )}
               <div className="text-center">
-                <p className="text-3xl font-black font-nunito tracking-widest text-primary">{gameCode}</p>
+                <p className="text-3xl font-black font-nunito tracking-widest text-primary">{gameCode || '...'}</p>
                 <p className="text-xs text-muted-foreground">En attente de l'adversaire…</p>
               </div>
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </motion.div>
           )}
+
 
           {/* ── SCANNING ── */}
           {step === 'scanning' && (
@@ -391,8 +405,11 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
                 <div className="flex gap-2">
                   <input type="text" placeholder="Code à 4 chiffres" value={manualCode} onChange={(e) => setManualCode(e.target.value.toUpperCase())} className="flex-1 bg-muted border-2 border-border rounded-xl px-4 py-3 font-nunito font-bold text-center" maxLength={4} />
                   <button onClick={() => {
-                    if (manualCode.length === 4) {
-                      getSocket().emit('join-lobby', { lobbyId: manualCode, profileId: profile.id, pseudo: profile.pseudo, elo: profile.elo, rankTier: profile.rankTier, rankStep: profile.rankStep });
+                    const code = manualCode.trim();
+                    if (code.length >= 2) {
+                      setGameCode(code);
+                      setStep('joining');
+                      getSocket().emit('join-lobby', { lobbyId: code, profileId: profile.id, pseudo: profile.pseudo, elo: profile.elo, rankTier: profile.rankTier, rankStep: profile.rankStep, avatarEmoji: profile.avatarEmoji });
                     }
                   }} className="btn-primary px-6">Valider</button>
                 </div>
@@ -400,7 +417,17 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
             </motion.div>
           )}
 
-          {/* ── MATCHED ── */}
+          {/* ── JOINING (transition state after scan) — #14 ── */}
+          {step === 'joining' && (
+            <motion.div key="joining" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-5 py-6">
+              <Loader2 className="w-10 h-10 animate-spin text-primary" />
+              <div className="text-center">
+                <p className="font-nunito font-black text-lg">Connexion en cours…</p>
+                <p className="text-sm text-muted-foreground mt-1">En attente de l'hôte</p>
+              </div>
+              <p className="text-xs text-muted-foreground font-mono bg-muted px-3 py-1.5 rounded-lg">{gameCode}</p>
+            </motion.div>
+          )}
           {step === 'matched' && opponent && (
             <motion.div key="matched" initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-5 py-2">
               <div className={`px-3 py-1 rounded-lg text-xs font-bold ${matchMode === 'competitive' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
@@ -414,7 +441,7 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
                 </div>
                 <div className="text-xl font-black text-muted-foreground font-nunito">VS</div>
                 <div className="flex-1 text-center">
-                  <p className="text-2xl">🐉</p>
+                  <p className="text-2xl">{opponent.avatarEmoji || '🐉'}</p>
                   <p className="font-nunito font-bold text-sm mt-1">{opponent.pseudo}</p>
                   <p className="text-xs text-muted-foreground" style={{ color: getTierConfig(opponent.rankTier as any).color }}>{opponentRankName}</p>
                 </div>
@@ -430,9 +457,42 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
             </motion.div>
           )}
 
-          {/* ── PLAYING → Score Entry ── */}
-          {(step === 'playing' || step === 'score-entry') && opponent && (
-            <motion.div key="playing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-5 py-2">
+          {/* ── PLAYING — Match en cours ── */}
+          {step === 'playing' && opponent && (
+            <motion.div key="playing" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-6 py-4">
+              <motion.div
+                animate={{ rotate: [0, -5, 5, -5, 5, 0] }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+                className="text-5xl"
+              >⚔️</motion.div>
+              <div className="text-center">
+                <h4 className="font-nunito font-black text-2xl mb-1">Match en cours !</h4>
+                <p className="text-sm text-muted-foreground">Bonne chance à tous les deux 🍀</p>
+              </div>
+              <div className="flex items-center gap-6 p-4 bg-muted rounded-2xl w-full">
+                <div className="flex-1 text-center">
+                  <p className="text-2xl">{profile.avatarEmoji}</p>
+                  <p className="font-nunito font-bold text-sm mt-1">{profile.pseudo}</p>
+                </div>
+                <div className="text-xl font-black text-primary font-nunito">VS</div>
+                <div className="flex-1 text-center">
+                  <p className="text-2xl">{opponent.avatarEmoji || '🐉'}</p>
+                  <p className="font-nunito font-bold text-sm mt-1">{opponent.pseudo}</p>
+                </div>
+              </div>
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                className="btn-primary w-full py-4 text-base"
+                onClick={() => setStep('score-entry')}
+              >
+                🏁 Terminer le match &amp; Indiquer le score
+              </motion.button>
+            </motion.div>
+          )}
+
+          {/* ── SCORE ENTRY ── */}
+          {step === 'score-entry' && opponent && (
+            <motion.div key="score-entry" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-5 py-2">
               <div className="text-center mb-2">
                 <h4 className="font-nunito font-black text-xl mb-1">Saisissez le score</h4>
                 <p className="text-sm text-muted-foreground">{profile.pseudo} vs {opponent.pseudo} · 2 manches gagnantes</p>
@@ -559,20 +619,50 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
                 )}
               </div>
 
-              <div className="flex gap-3 mt-2">
-                <button className="btn-glass flex-1 py-3.5" onClick={() => setStep('score-entry')}>
-                  Retour
-                </button>
-                <button
-                  className="btn-primary flex-1 py-3.5"
-                  onClick={handleSubmitResult}
-                  disabled={isProcessing}
+              {/* ─ Boutons Valider / Retour ─ */}
+              {hasVoted ? (
+                /* Waiting — l'autre joueur n'a pas encore validé */
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex flex-col items-center gap-4 p-5 bg-muted rounded-2xl"
                 >
-                  {isProcessing ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (
-                    <><Check className="w-5 h-5" /> Valider</>
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  <div className="text-center">
+                    <p className="font-nunito font-black text-base">Ton score est envoyé ✅</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      En attente que <strong>{opponent?.pseudo}</strong> valide aussi son score…
+                    </p>
+                  </div>
+                  {mismatchError && (
+                    <div className="w-full p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-600 text-xs font-bold text-center">
+                      ⚠️ {mismatchError}
+                      <br />
+                      <button
+                        className="mt-2 underline text-rose-500 font-bold"
+                        onClick={() => { setHasVoted(false); setMismatchError(null); setSelectedScore(null); setWinnerId(null); setStep('score-entry'); }}
+                      >
+                        Modifier le score
+                      </button>
+                    </div>
                   )}
-                </button>
-              </div>
+                </motion.div>
+              ) : (
+                <div className="flex gap-3 mt-2">
+                  <button className="btn-glass flex-1 py-3.5" onClick={() => setStep('score-entry')}>
+                    Retour
+                  </button>
+                  <button
+                    className="btn-primary flex-1 py-3.5"
+                    onClick={handleSubmitResult}
+                    disabled={isProcessing}
+                  >
+                    {isProcessing ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (
+                      <><Check className="w-5 h-5" /> Valider</>
+                    )}
+                  </button>
+                </div>
+              )}
             </motion.div>
           )}
 

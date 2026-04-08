@@ -18,6 +18,7 @@ export default function CompetitionFlow({ onClose }: CompetitionFlowProps) {
   const [name, setName] = useState('');
   const [type, setType] = useState<CompetitionType>('friendly');
   const [format, setFormat] = useState<CompetitionFormat>('elimination');
+  const [homeAway, setHomeAway] = useState(false); // #9 — option aller-retour
   const [players, setPlayers] = useState<{ pseudo: string; elo?: number }[]>([]);
   const [newPseudo, setNewPseudo] = useState('');
   const [competition, setCompetition] = useState<ReturnType<typeof createCompetition> | null>(null);
@@ -25,7 +26,7 @@ export default function CompetitionFlow({ onClose }: CompetitionFlowProps) {
   const canGoNext = () => {
     if (step === 1) return name.trim().length >= 2;
     if (step === 4) {
-      if (format === 'elimination') return isPowerOfTwo(players.length) && players.length >= 4;
+      // #16 — minimum 4 joueurs, peu importe la puissance de 2
       return players.length >= 4;
     }
     return true;
@@ -47,9 +48,10 @@ export default function CompetitionFlow({ onClose }: CompetitionFlowProps) {
     }));
     const comp = createCompetition(name, type, format, rawPlayers);
     if (format === 'elimination') {
-      comp.matches = generateEliminationBracket(comp.players);
+      // #16 — passer le type pour le seeding (compétitif = meilleur joueur en tête de série)
+      comp.matches = generateEliminationBracket(comp.players, type as any);
     } else {
-      comp.matches = generateCupPoolMatches(comp.players);
+      comp.matches = generateCupPoolMatches(comp.players, homeAway);
       comp.status = 'pool';
     }
     setCompetition(comp);
@@ -59,9 +61,12 @@ export default function CompetitionFlow({ onClose }: CompetitionFlowProps) {
   const validationMsg = () => {
     if (step !== 4) return null;
     if (players.length < 4) return `Minimum 4 joueurs (${players.length}/4)`;
-    if (format === 'elimination' && !isPowerOfTwo(players.length)) {
-      const next = [4, 8, 16].find(n => n > players.length) ?? 16;
-      return `Le tournoi nécessite 4, 8 ou 16 joueurs (actuel: ${players.length})`;
+    // #16 — plus de restriction puissance de 2, les byes gèrent les nombres impairs
+    if (format === 'elimination' && players.length < 4) return `Minimum 4 joueurs pour un tournoi`;
+    if (format === 'elimination' && players.length > 0) {
+      const bracketSize = Math.pow(2, Math.ceil(Math.log2(players.length)));
+      const byes = bracketSize - players.length;
+      if (byes > 0) return `ℹ️ ${byes} joueur(s) exempté(s) du 1er tour (tête${byes > 1 ? 's' : ''} de série)`;
     }
     return null;
   };
@@ -176,6 +181,26 @@ export default function CompetitionFlow({ onClose }: CompetitionFlowProps) {
                         </button>
                       ))}
                     </div>
+                    {/* #9 — Option aller-retour (uniquement pour Coupe) */}
+                    {format === 'cup' && (
+                      <button
+                        onClick={() => setHomeAway(h => !h)}
+                        className={`mt-3 w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all ${
+                          homeAway ? 'border-primary bg-primary/5' : 'border-border bg-card'
+                        }`}
+                      >
+                        <span className="text-2xl">{homeAway ? '🔄' : '➡️'}</span>
+                        <div className="flex-1">
+                          <p className="font-nunito font-bold text-sm">Matchs aller-retour</p>
+                          <p className="text-xs text-muted-foreground">
+                            {homeAway ? 'Activé — chaque adversaire se rencontre 2 fois' : 'Désactivé — format aller simple'}
+                          </p>
+                        </div>
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${homeAway ? 'border-primary bg-primary' : 'border-border'}`}>
+                          {homeAway && <div className="w-2 h-2 rounded-full bg-white" />}
+                        </div>
+                      </button>
+                    )}
                   </div>
                 )}
 

@@ -40,30 +40,93 @@ export function createCompetition(
 
 // ─── ELIMINATION TOURNAMENT ────────────────────────────────────────────────────
 
-/** Generate a single-elimination bracket from a list of players */
-export function generateEliminationBracket(players: CompetitionPlayer[]): CompetitionMatch[] {
-  const shuffled = shuffle(players);
+/** Sort players for seeding: best rankStep first, random if tied */
+export function seedPlayers(
+  players: CompetitionPlayer[],
+  competitionType: CompetitionType = 'friendly',
+  manualSeeds?: string[] // ordered list of IDs for manual seeding
+): CompetitionPlayer[] {
+  if (manualSeeds && manualSeeds.length > 0) {
+    // Manual order: seeded first, remaining appended randomly
+    const seeded = manualSeeds.map(id => players.find(p => p.id === id)).filter(Boolean) as CompetitionPlayer[];
+    const rest = shuffle(players.filter(p => !manualSeeds.includes(p.id)));
+    return [...seeded, ...rest];
+  }
+  if (competitionType === 'competitive') {
+    // Best rank first (highest rankStep = best)
+    return [...players].sort((a, b) => (b.rankStep ?? 0) - (a.rankStep ?? 0));
+  }
+  return shuffle(players);
+}
+
+/**
+ * Generate a single-elimination bracket from any number of players ≥ 4.
+ * Players without an opponent in round 1 get a BYE (auto-advance to round 2).
+ * In competitive mode, top seeds get the bye slots.
+ */
+export function generateEliminationBracket(
+  players: CompetitionPlayer[],
+  competitionType: CompetitionType = 'friendly',
+  manualSeeds?: string[]
+): CompetitionMatch[] {
+  const seeded = seedPlayers(players, competitionType, manualSeeds);
+  const n = seeded.length;
+
+  // Next power of 2 >= n
+  const bracketSize = Math.pow(2, Math.ceil(Math.log2(n)));
+  // Number of byes needed
+  const byeCount = bracketSize - n;
+  // Players with a BYE are the top seeds (first byeCount players)
+  // They auto-advance; others play round 1
+
   const matches: CompetitionMatch[] = [];
 
-  // Round 1 pairs
-  for (let i = 0; i < shuffled.length; i += 2) {
-    matches.push({
-      id: newMatchId(),
-      player1: shuffled[i],
-      player2: shuffled[i + 1] ?? null,
-      winner: null,
-      round: 1,
-      position: Math.floor(i / 2),
-    });
+  // Build round 1: slot 0 to bracketSize/2 - 1
+  // Seeded positions: top seeds get byes in pair positions
+  // Strategy: place top "byeCount" seeds in bye slots, rest play
+  const round1Count = bracketSize / 2; // matches in round 1 bracket slots
+  let byesGiven = 0;
+  let nonByeIndex = byeCount; // first player without bye
+
+  for (let pos = 0; pos < round1Count; pos++) {
+    const odd = pos * 2;     // slot A
+    const even = pos * 2 + 1; // slot B
+
+    const playerA = seeded[odd] ?? null;
+    // If playerA is in bye zone (first byeCount) → they have a bye → player2 = null
+    const hasBye = playerA && byesGiven < byeCount && odd < byeCount;
+
+    if (hasBye) {
+      // BYE match: playerA auto-wins
+      matches.push({
+        id: newMatchId(),
+        player1: playerA,
+        player2: null, // BYE
+        winner: playerA, // auto-advance
+        round: 1,
+        position: pos,
+        isBye: true,
+      });
+      byesGiven++;
+    } else {
+      const playerB = seeded[even] ?? null;
+      matches.push({
+        id: newMatchId(),
+        player1: playerA,
+        player2: playerB,
+        winner: null,
+        round: 1,
+        position: pos,
+      });
+    }
   }
 
-  // Generate placeholder matches for future rounds
+  // Generate placeholder matches for rounds 2+
   let round = 1;
-  let matchesInRound = shuffled.length / 2;
-  let offset = matches.length;
+  let matchesInRound = round1Count;
 
   while (matchesInRound > 1) {
-    matchesInRound /= 2;
+    matchesInRound = matchesInRound / 2;
     round++;
     for (let pos = 0; pos < matchesInRound; pos++) {
       matches.push({
@@ -75,7 +138,19 @@ export function generateEliminationBracket(players: CompetitionPlayer[]): Compet
         position: pos,
       });
     }
-    offset += matchesInRound;
+  }
+
+  // Propagate bye winners to round 2
+  const byeMatches = matches.filter(m => m.isBye && m.winner);
+  for (const byeMatch of byeMatches) {
+    const nextRound = 2;
+    const nextPos = Math.floor(byeMatch.position / 2);
+    const isSlotA = byeMatch.position % 2 === 0;
+    const nextMatch = matches.find(m => m.round === nextRound && m.position === nextPos);
+    if (nextMatch) {
+      if (isSlotA) nextMatch.player1 = byeMatch.winner!;
+      else nextMatch.player2 = byeMatch.winner!;
+    }
   }
 
   return matches;
@@ -138,30 +213,64 @@ export function generateGroupMatches(players: CompetitionPlayer[], group: string
   return matches;
 }
 
-/** Divide players into groups of 4 */
+/** Generate home-and-away (aller-retour) matches for a group */
+export function generateGroupMatchesHomeAway(players: CompetitionPlayer[], group: string): CompetitionMatch[] {
+  const matches: CompetitionMatch[] = [];
+  for (let i = 0; i < players.length; i++) {
+    for (let j = 0; j < players.length; j++) {
+      if (i === j) continue;
+      matches.push({
+        id: newMatchId(),
+        player1: players[i],
+        player2: players[j],
+        winner: null,
+        round: 1,
+        position: matches.length,
+        group,
+      });
+    }
+  }
+  return matches;
+}
+
+/** Divide players into balanced groups
+ * Équilibre les groupes : préfère des groupes de 4 mais redistribue le surplus.
+ * Ex: 5 → [3,2] ou [A:3, B:2]; 6 → [3,3]; 7 → [4,3]; 9 → [3,3,3]; 10 → [4,3,3]... */
 export function createGroups(players: CompetitionPlayer[]): Record<string, CompetitionPlayer[]> {
   const shuffled = shuffle(players);
-  const groups: Record<string, CompetitionPlayer[]> = {};
   const groupNames = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+  const n = shuffled.length;
 
-  const groupSize = 4;
-  let groupIndex = 0;
+  // Calcul du nombre optimal de groupes
+  let numGroups = Math.ceil(n / 4);
+  if (numGroups < 1) numGroups = 1;
 
-  for (let i = 0; i < shuffled.length; i += groupSize) {
-    const name = groupNames[groupIndex++];
-    groups[name] = shuffled.slice(i, i + groupSize);
+  // Répartition équilibrée : certains groupes auront Math.ceil(n/numGroups), d'autres Math.floor
+  const baseSize = Math.floor(n / numGroups);
+  const extras = n % numGroups; // les premiers 'extras' groupes auront un joueur de plus
+
+  const groups: Record<string, CompetitionPlayer[]> = {};
+  let cursor = 0;
+
+  for (let g = 0; g < numGroups; g++) {
+    const size = g < extras ? baseSize + 1 : baseSize;
+    groups[groupNames[g]] = shuffled.slice(cursor, cursor + size);
+    cursor += size;
   }
 
   return groups;
 }
 
 /** Generate all pool matches for a cup */
-export function generateCupPoolMatches(players: CompetitionPlayer[]): CompetitionMatch[] {
+export function generateCupPoolMatches(players: CompetitionPlayer[], homeAway = false): CompetitionMatch[] {
   const groups = createGroups(players);
   const allMatches: CompetitionMatch[] = [];
 
   for (const [groupName, groupPlayers] of Object.entries(groups)) {
-    allMatches.push(...generateGroupMatches(groupPlayers, groupName));
+    allMatches.push(...(homeAway
+      ? generateGroupMatchesHomeAway(groupPlayers, groupName)
+      : generateGroupMatches(groupPlayers, groupName)
+    ));
   }
 
   return allMatches;

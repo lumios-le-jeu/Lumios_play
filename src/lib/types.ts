@@ -180,7 +180,7 @@ export interface Arena {
 
 // ─── Competition Types ─────────────────────────────────────────────────────────
 
-export type CompetitionType = 'ranked' | 'friendly';
+export type CompetitionType = 'ranked' | 'friendly' | 'competitive';
 export type CompetitionFormat = 'elimination' | 'cup';
 
 export interface CompetitionPlayer {
@@ -203,6 +203,7 @@ export interface CompetitionMatch {
   round: number;
   position: number;
   group?: string;
+  isBye?: boolean; // joueur exempté direct (bye round 1)
 }
 
 export interface Competition {
@@ -219,9 +220,20 @@ export interface Competition {
   dateTime?: string;
 }
 
-// ─── Leaderboard Types ─────────────────────────────────────────────────────────
+// ─── Leaderboard Types ─────────────────────────────────────────────────────
 
-export type LeaderboardFilter = 'city' | 'region' | 'country' | 'world';
+export type LeaderboardFilter = 'month' | 'season' | 'year';
+
+/** Saisons de jeu (calendrier trimestriel) */
+export type GameSeason = 'spring' | 'summer' | 'autumn' | 'winter';
+
+export function getCurrentGameSeason(): { season: GameSeason; label: string; months: string } {
+  const month = new Date().getMonth() + 1; // 1-12
+  if (month >= 4 && month <= 6)  return { season: 'spring', label: 'Printemps', months: 'avr.–juin' };
+  if (month >= 7 && month <= 8)  return { season: 'summer',  label: 'Été',       months: 'juil.–août' };
+  if (month >= 9 && month <= 11) return { season: 'autumn',  label: 'Automne',  months: 'sep.–nov.' };
+  return { season: 'winter', label: 'Hiver', months: 'déc.–mars' };
+}
 
 export interface LeaderboardEntry {
   rank: number;

@@ -6,11 +6,12 @@ import type { ChildProfile, ParentAccount, AccountType, MatchMode, ScoreDetail }
 export async function createParentAccount(
   email: string,
   name: string,
-  accountType: AccountType = 'family'
+  accountType: AccountType = 'family',
+  password: string = 'LumiosPlay123!'
 ): Promise<{ data: ParentAccount | null, error: any }> {
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email,
-    password: 'LumiosPlay123!',
+    password,
   });
 
   if (authError || !authData.user) return { data: null, error: authError };
@@ -34,10 +35,10 @@ export async function createParentAccount(
   };
 }
 
-export async function loginParent(email: string): Promise<{ data: ParentAccount | null, error: any }> {
+export async function loginParent(email: string, password: string = 'LumiosPlay123!'): Promise<{ data: ParentAccount | null, error: any }> {
   const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
     email,
-    password: 'LumiosPlay123!',
+    password,
   });
 
   if (authError || !authData.user) return { data: null, error: authError };
@@ -370,6 +371,34 @@ export async function getFriends(profileId: string): Promise<{ data: any[], erro
   return { data: friendsWithCounts, error: null };
 }
 
+export async function getPendingFriendRequests(profileId: string): Promise<{ data: any[], error: any }> {
+  // Demandes reçues : quelqu'un nous a envoyé une demande (friend_id = profileId, status = pending)
+  const { data, error } = await supabase
+    .from('friends')
+    .select(`
+      status,
+      requester:profiles!friends_profile_id_fkey (
+        id, pseudo, avatar_emoji, has_lumios, elo, city, rank_tier, rank_step
+      )
+    `)
+    .eq('friend_id', profileId)
+    .eq('status', 'pending');
+
+  if (error || !data) return { data: [], error };
+
+  const mapped = data.map((r: any) => ({
+    id: r.requester.id,
+    pseudo: r.requester.pseudo,
+    avatarEmoji: r.requester.avatar_emoji,
+    hasLumios: r.requester.has_lumios,
+    city: r.requester.city,
+    rankTier: r.requester.rank_tier || 'bronze',
+    rankStep: r.requester.rank_step ?? 0,
+  }));
+
+  return { data: mapped, error: null };
+}
+
 export async function searchProfiles(query: string, excludeId?: string): Promise<{ data: any[], error: any }> {
   let q = supabase
     .from('profiles')
@@ -389,8 +418,107 @@ export async function addFriend(profileId: string, friendId: string): Promise<bo
   const { error } = await supabase
     .from('friends')
     .upsert([
-      { profile_id: profileId, friend_id: friendId, status: 'accepted' },
-      { profile_id: friendId, friend_id: profileId, status: 'accepted' },
+      { profile_id: profileId, friend_id: friendId, status: 'pending' },
     ]);
   return !error;
 }
+
+export async function acceptFriendRequest(profileId: string, requesterId: string): Promise<boolean> {
+  // Accept: both sides become 'accepted'
+  const { error: e1 } = await supabase
+    .from('friends')
+    .update({ status: 'accepted' })
+    .eq('profile_id', requesterId)
+    .eq('friend_id', profileId);
+  if (e1) return false;
+  const { error: e2 } = await supabase
+    .from('friends')
+    .upsert([{ profile_id: profileId, friend_id: requesterId, status: 'accepted' }]);
+  return !e2;
+}
+
+export async function declineFriendRequest(profileId: string, requesterId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('friends')
+    .delete()
+    .eq('profile_id', requesterId)
+    .eq('friend_id', profileId);
+  return !error;
+}
+
+// ─── FAMILY LINKING (#15) ─────────────────────────────────────────────────────
+
+/** Un compte individuel envoie une demande de rattachement à une famille */
+export async function requestFamilyLink(profileId: string, familyParentId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('family_link_requests')
+    .upsert([{ requester_profile_id: profileId, family_parent_id: familyParentId, status: 'pending' }]);
+  return !error;
+}
+
+/** Récupérer les demandes de rattachement reçues par un responsable de famille */
+export async function getPendingFamilyRequests(parentId: string): Promise<{ data: any[], error: any }> {
+  const { data, error } = await supabase
+    .from('family_link_requests')
+    .select(`
+      id,
+      status,
+      requester:profiles!family_link_requests_requester_profile_id_fkey (
+        id, pseudo, avatar_emoji, rank_tier, rank_step, age_range
+      )
+    `)
+    .eq('family_parent_id', parentId)
+    .eq('status', 'pending');
+
+  if (error || !data) return { data: [], error };
+  return {
+    data: data.map((r: any) => ({
+      requestId: r.id,
+      id: r.requester.id,
+      pseudo: r.requester.pseudo,
+      avatarEmoji: r.requester.avatar_emoji,
+      rankTier: r.requester.rank_tier || 'bronze',
+      rankStep: r.requester.rank_step ?? 0,
+      ageRange: r.requester.age_range,
+    })),
+    error: null,
+  };
+}
+
+/** Accepter le rattachement : déplacer le profil sous la famille */
+export async function acceptFamilyLink(requestId: string, requesterProfileId: string, familyParentId: string): Promise<boolean> {
+  // Mettre à jour le parent_id du profil individuel
+  const { error: e1 } = await supabase
+    .from('profiles')
+    .update({ parent_id: familyParentId, account_type: 'family' })
+    .eq('id', requesterProfileId);
+  if (e1) return false;
+
+  // Marquer la demande comme acceptée
+  const { error: e2 } = await supabase
+    .from('family_link_requests')
+    .update({ status: 'accepted' })
+    .eq('id', requestId);
+  return !e2;
+}
+
+/** Refuser le rattachement */
+export async function declineFamilyLink(requestId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('family_link_requests')
+    .update({ status: 'declined' })
+    .eq('id', requestId);
+  return !error;
+}
+
+/** Rechercher un compte famille par nom ou email */
+export async function searchFamilyAccounts(query: string): Promise<{ data: any[], error: any }> {
+  const { data, error } = await supabase
+    .from('parent_accounts')
+    .select('id, name, email, account_type')
+    .eq('account_type', 'family')
+    .ilike('name', `%${query}%`)
+    .limit(8);
+  return { data: data || [], error };
+}
+
