@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Trophy, ChevronRight, ChevronLeft, Plus, Trash2, Search } from 'lucide-react';
+import { X, Trophy, ChevronRight, ChevronLeft, Plus, Trash2, Search, Users } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import { getSocket } from '../../lib/socket';
 import type { CompetitionType, CompetitionFormat } from '../../lib/types';
 import { PLAYER_COLORS } from '../../lib/types';
 import { createCompetition, isPowerOfTwo, generateEliminationBracket, generateCupPoolMatches } from '../../lib/competition';
@@ -22,6 +24,27 @@ export default function CompetitionFlow({ onClose }: CompetitionFlowProps) {
   const [players, setPlayers] = useState<{ pseudo: string; elo?: number }[]>([]);
   const [newPseudo, setNewPseudo] = useState('');
   const [competition, setCompetition] = useState<ReturnType<typeof createCompetition> | null>(null);
+  const [compCode] = useState(() => Math.random().toString(36).substring(2, 8).toUpperCase());
+
+  useEffect(() => {
+    if (step !== 4) return;
+    const socket = getSocket();
+    
+    socket.emit('create-comp-lobby', compCode);
+    
+    const handlePlayerJoined = (player: any) => {
+      setPlayers(prev => {
+        if (prev.find(p => p.pseudo === player.pseudo)) return prev;
+        return [...prev, { pseudo: player.pseudo, elo: player.elo, avatarEmoji: player.avatarEmoji, id: player.id }];
+      });
+    };
+    
+    socket.on('comp-player-joined', handlePlayerJoined);
+    
+    return () => {
+      socket.off('comp-player-joined', handlePlayerJoined);
+    };
+  }, [step, compCode]);
 
   const canGoNext = () => {
     if (step === 1) return name.trim().length >= 2;
@@ -207,30 +230,49 @@ export default function CompetitionFlow({ onClose }: CompetitionFlowProps) {
                 {/* Step 4 — Players */}
                 {step === 4 && (
                   <div>
-                    <h4 className="font-nunito font-black text-base mb-1">Ajout des joueurs</h4>
+                    <h4 className="font-nunito font-black text-base mb-1">Inscriptions ouvertes !</h4>
                     <p className="text-xs text-muted-foreground mb-4">
-                      {format === 'elimination' ? 'Tournoi : 4, 8 ou 16 joueurs requis' : 'Coupe : minimum 4 joueurs (groupes de 4)'}
+                      {format === 'elimination' ? 'Tournoi : 4, 8 ou 16 joueurs requis' : 'Coupe : minimum 4 joueurs'}
                     </p>
 
-                    {/* Add player input */}
-                    <div className="flex gap-2 mb-4">
-                      <input className="input-lumios flex-1" placeholder="Pseudo du joueur" value={newPseudo} onChange={e => setNewPseudo(e.target.value)} onKeyDown={e => e.key === 'Enter' && addPlayer()} />
-                      <button onClick={addPlayer} className="w-11 h-11 gradient-lumios rounded-xl flex items-center justify-center text-white flex-shrink-0">
-                        <Plus className="w-5 h-5" />
-                      </button>
+                    {/* QR Code */}
+                    <div className="flex flex-col items-center bg-white p-4 rounded-3xl mx-auto shadow-sm mb-4 w-max border-4 border-primary/20">
+                      <QRCodeSVG
+                        value={JSON.stringify({ type: 'comp-join', code: compCode })}
+                        size={160}
+                        bgColor="#ffffff"
+                        fgColor="#000000"
+                        level="M"
+                      />
+                      <div className="mt-3 flex items-center gap-2 bg-muted px-3 py-1.5 rounded-xl">
+                        <span className="font-nunito font-black text-lg tracking-widest text-primary">{compCode}</span>
+                      </div>
                     </div>
+                    <p className="text-xs text-center text-muted-foreground mb-4">
+                      Les joueurs doivent scanner ce code depuis l'onglet Accueil → <strong>Rejoindre un tournoi</strong>
+                    </p>
 
                     {/* Player list */}
                     <div className="flex flex-col gap-2 max-h-48 overflow-y-auto mb-3">
-                      {players.map((p, i) => (
-                        <div key={i} className="flex items-center gap-3 p-2.5 bg-muted rounded-xl">
-                          <div className="w-6 h-6 rounded-lg flex-shrink-0" style={{ background: PLAYER_COLORS[i % PLAYER_COLORS.length] }} />
-                          <span className="font-nunito font-bold text-sm flex-1">{p.pseudo}</span>
-                          <button onClick={() => removePlayer(i)} className="text-muted-foreground hover:text-accent transition-colors">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                      {players.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-6 px-4 bg-muted/50 rounded-2xl border border-dashed border-border text-center">
+                          <Users className="w-8 h-8 text-muted-foreground mb-2 opacity-50" />
+                          <p className="text-sm font-nunito font-bold text-muted-foreground">En attente d'inscrits...</p>
                         </div>
-                      ))}
+                      )}
+                      <AnimatePresence>
+                        {players.map((p: any, i: number) => (
+                          <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, scale: 0.9 }} key={p.pseudo} className="flex items-center gap-3 p-3 bg-muted rounded-xl border border-border/50">
+                            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0 shadow-sm" style={{ background: PLAYER_COLORS[i % PLAYER_COLORS.length] }}>
+                              {p.avatarEmoji || '🎮'}
+                            </div>
+                            <span className="font-nunito font-bold text-sm flex-1">{p.pseudo}</span>
+                            <button onClick={() => removePlayer(i)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-card text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </motion.div>
+                        ))}
+                      </AnimatePresence>
                     </div>
 
                     {validationMsg() && (

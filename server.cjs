@@ -152,6 +152,19 @@ io.on('connection', (socket) => {
     socket.emit('lobby-created', code);
   });
 
+  // ── COMPETITION REGISTRATION ───────────────────────────────────────────────
+  socket.on('create-comp-lobby', (code) => {
+    socket.join(`comp-${code}`);
+    console.log(`[COMP-LOBBY:CREATE] Code=${code}`);
+  });
+
+  socket.on('join-comp-lobby', (data) => {
+    const { compId, profileInfo } = data;
+    io.to(`comp-${compId}`).emit('comp-player-joined', profileInfo);
+    socket.emit('comp-join-success');
+    console.log(`[COMP-LOBBY:JOIN] Code=${compId} Player=${profileInfo?.pseudo}`);
+  });
+
   // ── FIND LOBBIES (Nearby) ──────────────────────────────────────────────────
   socket.on('find-lobbies', (data) => {
     const { lat, lng, radius = 50 } = data;

@@ -7,6 +7,7 @@ import { getTierConfig } from '../../lib/types';
 import FriendDuelModal from './FriendDuelModal';
 import CreateArenaModal from './CreateArenaModal';
 import FindGameModal from './FindGameModal';
+import JoinCompModal from './JoinCompModal';
 import CompetitionFlow from '../competition/CompetitionFlow';
 import { formatDistance } from '../../lib/utils';
 import { getSocket } from '../../lib/socket';
@@ -30,9 +31,18 @@ const MODES = [
     gradient: 'from-orange-500 to-red-400',
     badge: 'Classé',
   },
+  {
+    id: 'comp-join',
+    title: 'Rejoindre un Tournoi',
+    desc: 'Scannez le code du créateur',
+    Icon: Sparkles,
+    color: 'emerald' as const,
+    gradient: 'from-emerald-500 to-emerald-400',
+    badge: 'Scanner',
+  },
 ];
 
-type ModalType = 'duel' | 'arena' | 'find' | 'competition' | null;
+type ModalType = 'duel' | 'arena' | 'find' | 'competition' | 'comp-join' | null;
 
 interface PlayScreenProps {
   profile: ChildProfile;
@@ -158,6 +168,7 @@ export default function PlayScreen({ profile, onRefreshProfile, isGuest }: PlayS
         {activeModal === 'arena'       && <CreateArenaModal profile={profile} onClose={() => setActiveModal(null)} />}
         {activeModal === 'find'        && <FindGameModal profile={profile} onClose={() => setActiveModal(null)} />}
         {activeModal === 'competition' && <CompetitionFlow onClose={() => setActiveModal(null)} />}
+        {activeModal === 'comp-join'   && <JoinCompModal profile={profile} onClose={() => setActiveModal(null)} />}
       </AnimatePresence>
     </div>
   );
