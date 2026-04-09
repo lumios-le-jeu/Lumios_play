@@ -9,6 +9,7 @@ import CreateArenaModal from './CreateArenaModal';
 import FindGameModal from './FindGameModal';
 import JoinCompModal from './JoinCompModal';
 import CompetitionFlow from '../competition/CompetitionFlow';
+import GuestConversionModal from '../auth/GuestConversionModal';
 import { formatDistance } from '../../lib/utils';
 import { getSocket } from '../../lib/socket';
 
@@ -54,6 +55,7 @@ export default function PlayScreen({ profile, onRefreshProfile, isGuest }: PlayS
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [nearbyArenas, setNearbyArenas] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showGuestConversion, setShowGuestConversion] = useState(false);
 
   const rankName = getRankDisplayName(profile.rankTier, profile.rankStep);
   const tierCfg = getTierConfig(profile.rankTier);
@@ -120,7 +122,21 @@ export default function PlayScreen({ profile, onRefreshProfile, isGuest }: PlayS
       {/* MODES */}
       <div className="grid grid-cols-2 gap-3 mb-7">
         {MODES.map((mode, i) => (
-          <motion.button key={mode.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }} whileTap={{ scale: 0.95 }} onClick={() => setActiveModal(mode.id as ModalType)} className="relative flex flex-col items-start p-4 card-lumios card-lumios-hover overflow-hidden text-left">
+          <motion.button 
+            key={mode.id} 
+            initial={{ opacity: 0, y: 20 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            transition={{ delay: i * 0.07 }} 
+            whileTap={{ scale: 0.95 }} 
+            onClick={() => {
+              if (isGuest && (mode.id === 'competition' || mode.id === 'comp-join')) {
+                setShowGuestConversion(true);
+                return;
+              }
+              setActiveModal(mode.id as ModalType);
+            }} 
+            className="relative flex flex-col items-start p-4 card-lumios card-lumios-hover overflow-hidden text-left"
+          >
             <div className={`absolute -top-4 -right-4 w-20 h-20 rounded-full opacity-10 bg-gradient-to-br ${mode.gradient}`} />
             <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-3 shadow-sm" style={{ background: `hsl(var(--${mode.color}) / 0.12)` }}>
               <mode.Icon className="w-5 h-5" style={{ color: `hsl(var(--${mode.color}))` }} strokeWidth={2.2} />
@@ -169,6 +185,10 @@ export default function PlayScreen({ profile, onRefreshProfile, isGuest }: PlayS
         {activeModal === 'find'        && <FindGameModal profile={profile} onClose={() => setActiveModal(null)} />}
         {activeModal === 'competition' && <CompetitionFlow onClose={() => setActiveModal(null)} />}
         {activeModal === 'comp-join'   && <JoinCompModal profile={profile} onClose={() => setActiveModal(null)} />}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showGuestConversion && <GuestConversionModal onClose={() => setShowGuestConversion(false)} />}
       </AnimatePresence>
     </div>
   );

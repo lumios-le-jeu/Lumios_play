@@ -27,7 +27,15 @@ export default function App() {
   const handleAuthComplete = async (p: ParentAccount) => {
     setParent(p);
     setIsFetching(true);
-    const { data } = await getProfilesForParent(p.id);
+    let { data } = await getProfilesForParent(p.id);
+    
+    // Retry si Supabase est un peu lent à propager l'INSERT
+    if (data.length === 0) {
+      await new Promise(r => setTimeout(r, 1000));
+      const retry = await getProfilesForParent(p.id);
+      data = retry.data;
+    }
+    
     setProfiles(data);
     setIsFetching(false);
 

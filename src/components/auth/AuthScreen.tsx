@@ -48,6 +48,7 @@ export default function AuthScreen({ initialView, guestTransferProfile, onAuthCo
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
+  const [parentRelation, setParentRelation] = useState(ADULT_RELATIONS[0]);
   const [pseudo, setPseudo]   = useState(guestTransferProfile?.pseudo || '');
   const [avatar, setAvatar]   = useState(guestTransferProfile?.avatarEmoji || AVATARS[0]);
   const [ageRange, setAgeRange] = useState<AgeRange>('18+');
@@ -180,6 +181,7 @@ export default function AuthScreen({ initialView, guestTransferProfile, onAuthCo
       seasonXp: initSeasonXp,
       winStreak: initWinStreak,
       accountType,
+      relation: accountType === 'family' ? parentRelation : undefined,
     });
 
     // Membres famille ajoutés
@@ -638,6 +640,20 @@ export default function AuthScreen({ initialView, guestTransferProfile, onAuthCo
                         ))}
                       </div>
                     </div>
+                    {accountType === 'family' && (
+                      <div className="mt-1">
+                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 block">Votre rôle</label>
+                        <select
+                          className="input-lumios w-full bg-card"
+                          value={parentRelation}
+                          onChange={e => setParentRelation(e.target.value)}
+                        >
+                          {FAMILY_RELATIONS.map(r => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
                 )}
 
