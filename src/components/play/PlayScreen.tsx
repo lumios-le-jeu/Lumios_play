@@ -169,7 +169,7 @@ export default function PlayScreen({ profile, onRefreshProfile, isGuest }: PlayS
         </a>
 
         <div className="flex flex-col items-center gap-1 opacity-50">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Lumios Play v2.0.0</p>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Lumios Play v.0.2</p>
           <button
             onClick={() => window.location.reload()}
             className="text-[9px] font-black text-primary bg-primary/10 px-2 py-1 rounded-full uppercase tracking-tighter hover:bg-primary/20 transition-colors"
