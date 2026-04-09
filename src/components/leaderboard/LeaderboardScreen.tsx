@@ -204,14 +204,15 @@ export default function LeaderboardScreen({ profile, onRefreshProfile }: Leaderb
                   transition={{ delay: 0.1 }}
                   className="flex items-end justify-center gap-3 mb-7 px-4"
                 >
-                  {PODIUM_ORDER.map(rank => {
-                    const player = top3.find((p: any) => p.rank === rank);
+                  {[1, 0, 2].map(idx => {
+                    const player = top3[idx];
                     if (!player) return null;
-                    const isFirst = rank === 1;
+                    const visualLevel = idx === 0 ? 1 : idx === 1 ? 2 : 3;
+                    const isFirst = visualLevel === 1;
                     const tierCfg = getTierConfig(player.rankTier || 'bronze');
                     const rankName = getRankDisplayName(player.rankTier || 'bronze', player.rankStep ?? 0);
                     return (
-                      <div key={rank} className="flex flex-col items-center gap-2" style={{ width: '30%' }}>
+                      <div key={player.id} className="flex flex-col items-center gap-2" style={{ width: '30%' }}>
                         {isFirst && (
                           <motion.div
                             animate={{ y: [0, -5, 0] }}
@@ -226,7 +227,7 @@ export default function LeaderboardScreen({ profile, onRefreshProfile }: Leaderb
                             isFirst ? 'w-14 h-14 animate-pulse-glow-golden gradient-golden' : 'w-12 h-12 surface-glass'
                           }`}
                           style={isFirst ? {} : {
-                            border: rank === 2 ? '2px solid rgba(200,200,220,0.5)' : '2px solid hsl(0 75% 70% / 0.4)',
+                            border: visualLevel === 2 ? '2px solid rgba(200,200,220,0.5)' : '2px solid hsl(0 75% 70% / 0.4)',
                           }}
                         >
                           {player.avatarEmoji}
@@ -240,13 +241,14 @@ export default function LeaderboardScreen({ profile, onRefreshProfile }: Leaderb
                             <span className="text-[10px] font-semibold" style={{ color: tierCfg.color }}>{rankName}</span>
                           </div>
                           <p className="text-[10px] text-muted-foreground font-semibold">{player.seasonXp ?? 0} XP</p>
+                          <p className="text-[10px] text-muted-foreground">{player.matchCount ?? 0} matchs</p>
                         </div>
                         <div
                           className={`w-full rounded-t-xl flex items-center justify-center font-nunito font-black text-white text-sm ${
                             isFirst ? 'gradient-golden' : 'bg-muted'
-                          } ${PODIUM_HEIGHTS[rank]}`}
+                          } ${PODIUM_HEIGHTS[visualLevel]}`}
                         >
-                          #{rank}
+                          #{player.rank}
                         </div>
                       </div>
                     );

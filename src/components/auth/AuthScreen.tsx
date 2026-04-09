@@ -52,6 +52,7 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
   const [hasLumios, setHasLumios] = useState<boolean | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [createdParentData, setCreatedParentData] = useState<ParentAccount | null>(null);
 
   // Family member state
   const [addingMember, setAddingMember] = useState(false);
@@ -106,14 +107,21 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
   const handleNext = async () => {
     if (!validateStep()) return;
 
-    // #5 — Vérif email en temps réel (aussi au "Suivant" comme filet de sécurité)
+    // Création formelle du compte Supabase afin de valider à 100% l'unicité
     if (signupStep === infoStep) {
-      setIsLoading(true);
-      const exists = await isEmailRegistered(email);
-      setIsLoading(false);
-      if (exists) {
-        setErrors({ email: 'Cet email est déjà utilisé' });
-        return;
+      if (!createdParentData || createdParentData.email !== email) {
+        setIsLoading(true);
+        const fullName = `${parentFirstName.trim()} ${parentLastName.trim()}`;
+        const { data: parentData, error: parentErr } = await createParentAccount(email, fullName, accountType, password);
+        setIsLoading(false);
+        if (parentErr || !parentData) {
+          const errorMsg = parentErr?.message?.toLowerCase().includes('already registered') 
+            ? 'Cet email est déjà utilisé' 
+            : 'Erreur: ' + (parentErr?.message || 'Inconnu');
+          setErrors({ email: errorMsg });
+          return;
+        }
+        setCreatedParentData(parentData);
       }
     }
 
@@ -142,14 +150,14 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
 
   const finalizeSignup = async () => {
     setIsLoading(true);
-    const fullName = `${parentFirstName.trim()} ${parentLastName.trim()}`;
-    // #13 — passer le vrai mot de passe saisi par l'utilisateur
-    const { data: parentData, error: parentErr } = await createParentAccount(email, fullName, accountType, password);
-    if (parentErr || !parentData) {
-      setErrors({ hasLumios: 'Erreur création : ' + (parentErr?.message || 'L\'email est peut-être déjà utilisé.') });
+    
+    // Le parentData est déjà créé à l'étape 2 (infoStep)
+    if (!createdParentData) {
+      setErrors({ hasLumios: 'Erreur lors de la récupération du compte.' });
       setIsLoading(false);
       return;
     }
+    const parentData = createdParentData;
 
     // Profil principal (le responsable / joueur)
     await createChildProfile({

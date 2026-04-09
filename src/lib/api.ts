@@ -264,26 +264,48 @@ export async function uploadMatchMedia(file: File, matchId: string): Promise<str
 // ─── LEADERBOARD & STATS ────────────────────────────────────────────────────
 
 export async function getGlobalLeaderboard(): Promise<{ data: any[], error: any }> {
+  // Option 1 : Utilisation d'une vue ou table (si tu as créé une Vue leaderboard_view)
+  // Sinon, ci-dessous une fonction qui appelle une RPC ou sélectionne la vue existante. 
+  // Ici nous tirons parti de la future vue leaderboard_view Supabase
   const { data, error } = await supabase
-    .from('profiles')
+    .from('leaderboard_view')
     .select('*')
+    .order('tier_weight', { ascending: false })
     .order('rank_step', { ascending: false })
     .order('season_xp', { ascending: false })
+    .order('match_count', { ascending: false })
     .limit(50);
 
   if (data) {
-    const mapped = data.map((p: any, i: number) => ({
-      rank: i + 1,
-      id: p.id,
-      pseudo: p.pseudo,
-      avatarEmoji: p.avatar_emoji,
-      elo: p.elo,
-      city: p.city,
-      hasLumios: p.has_lumios,
-      rankTier: p.rank_tier || 'bronze',
-      rankStep: p.rank_step ?? 0,
-      seasonXp: p.season_xp ?? 0,
-    }));
+    let currentRank = 1;
+    const mapped = data.map((p: any, i: number) => {
+      // Affinage du rang en cas d'égalité sur tous les points (XP + Matchs)
+      if (i > 0) {
+        const prev = data[i - 1];
+        const isTie = 
+          prev.tier_weight === p.tier_weight &&
+          prev.rank_step === p.rank_step &&
+          prev.season_xp === p.season_xp &&
+          prev.match_count === p.match_count;
+        if (!isTie) {
+          currentRank = i + 1;
+        }
+      }
+
+      return {
+        rank: currentRank,
+        id: p.id,
+        pseudo: p.pseudo,
+        avatarEmoji: p.avatar_emoji,
+        elo: p.elo,
+        city: p.city,
+        hasLumios: p.has_lumios,
+        rankTier: p.rank_tier || 'bronze',
+        rankStep: p.rank_step ?? 0,
+        seasonXp: p.season_xp ?? 0,
+        matchCount: p.match_count ?? 0,
+      };
+    });
     return { data: mapped, error: null };
   }
   return { data: [], error };

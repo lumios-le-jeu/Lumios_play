@@ -140,7 +140,7 @@ export default function FriendsScreen({ profile }: FriendsScreenProps) {
         <input className="input-lumios pl-9" placeholder="Rechercher un ami…" value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
-      {/* Filters + QR */}
+      {/* Filters */}
       <div className="flex items-center gap-2 mb-5">
         {(['all', 'online'] as FriendFilter[]).map(f => (
           <button
@@ -151,14 +151,6 @@ export default function FriendsScreen({ profile }: FriendsScreenProps) {
             {f === 'all' ? 'Tous' : '🟢 En ligne'}
           </button>
         ))}
-        <div className="flex gap-2 ml-auto">
-          <button className="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-muted-foreground hover:border-primary hover:text-primary transition-all">
-            <QrCode className="w-4 h-4" />
-          </button>
-          <button className="w-9 h-9 rounded-xl gradient-lumios flex items-center justify-center text-white shadow-sm">
-            <UserPlus className="w-4 h-4" />
-          </button>
-        </div>
       </div>
 
       {/* Friend List */}

@@ -8,9 +8,12 @@ Voici un petit récapitulatif pour vous :
 *   **Point de vigilance** : N'activez plus jamais de tunnel Cloudflare sur votre Windows avec le même token, sinon le "conflit" reviendra.
 
 ### 🛠️ Maintenance (Sur le Mac mini seulement)
-Si vous faites des modifications sur le code à l'avenir :
-1.  Faites votre `git pull` sur le Mac.
-2.  Relancez tout d'un coup avec : `npm run build && pm2 restart lumios-play`
+cd Lumios_play_private
+git pull
+npm install
+npm run build
+pm2 restart all
+
 
 Je vous laisse tester le jeu tranquillement ! On se retrouve quand vous voulez pour ajouter une nouvelle fonctionnalité (les classements, les duels, etc.) ou pour peaufiner l'interface. 
 
