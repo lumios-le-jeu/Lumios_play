@@ -44,8 +44,24 @@ export default function App() {
     sessionStorage.removeItem('lumios_guest');
 
     // Individuel avec 1 seul profil → accès direct
-    if (p.accountType === 'individual' && data.length === 1) {
-      setCurrentProfile(data[0]);
+    if (p.accountType === 'individual') {
+      const activeProfile = data[0] || {
+        id: `local-${p.id}`,
+        parentId: p.id,
+        pseudo: 'Joueur',
+        avatarEmoji: '🎮',
+        ageRange: '18+',
+        hasLumios: false,
+        elo: 800,
+        city: 'France',
+        createdAt: new Date().toISOString(),
+        rankTier: 'bronze',
+        rankStep: 0,
+        seasonXp: 0,
+        winStreak: 0,
+        accountType: 'individual',
+      };
+      setCurrentProfile(activeProfile as ChildProfile);
       setAuthState('app');
     } else {
       setAuthState('profile-select');

@@ -294,14 +294,16 @@ export default function ProfileScreen({ profile, parentAccount, familyProfiles =
       </motion.div>
 
       {/* Switch Profile */}
-      <motion.button
-        whileTap={{ scale: 0.97 }}
-        className="btn-glass w-full py-3.5 mb-3"
-        onClick={onSwitchProfile}
-      >
-        <RotateCcw className="w-4 h-4" />
-        Changer de profil
-      </motion.button>
+      {parentAccount?.accountType !== 'individual' && (
+        <motion.button
+          whileTap={{ scale: 0.97 }}
+          className="btn-glass w-full py-3.5 mb-3"
+          onClick={onSwitchProfile}
+        >
+          <RotateCcw className="w-4 h-4" />
+          Changer de profil
+        </motion.button>
+      )}
 
       {/* Logout */}
       <motion.button
