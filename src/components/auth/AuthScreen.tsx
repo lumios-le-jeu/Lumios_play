@@ -16,7 +16,7 @@ const AGE_RANGES: { value: AgeRange; label: string; sub: string }[] = [
 ];
 
 // #1 — Père & Mère ajoutés  (adultes +18)
-const FAMILY_RELATIONS = ['Fils', 'Fille', 'Père', 'Mère', 'Neveu', 'Nièce', 'Cousin', 'Cousine', 'Autre'];
+const FAMILY_RELATIONS = ['Fils', 'Fille', 'Père', 'Mère', 'Frère', 'Sœur', 'Autre'];
 const ADULT_RELATIONS  = ['Père', 'Mère']; // forcer 18+ pour ces rôles
 
 interface AuthScreenProps {

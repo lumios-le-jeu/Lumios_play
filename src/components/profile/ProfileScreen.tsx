@@ -11,6 +11,8 @@ import { searchFamilyAccounts, requestFamilyLink, getPendingFamilyRequests, acce
 interface ProfileScreenProps {
   profile: ChildProfile;
   parentAccount?: ParentAccount;
+  familyProfiles?: ChildProfile[];
+  onSelectProfile?: (profile: ChildProfile) => void;
   onLogout: () => void;
   onSwitchProfile: () => void;
 }
@@ -21,7 +23,7 @@ const MENU_ITEMS = [
   { id: 'settings',      icon: Settings, label: 'Paramètres',        desc: 'Langue, son, apparence' },
 ];
 
-export default function ProfileScreen({ profile, parentAccount, onLogout, onSwitchProfile }: ProfileScreenProps) {
+export default function ProfileScreen({ profile, parentAccount, familyProfiles = [], onSelectProfile, onLogout, onSwitchProfile }: ProfileScreenProps) {
   const [showComingSoon, setShowComingSoon] = useState(false);
   const [showQR, setShowQR] = useState(false);
   // #15 — Liaison famille
@@ -230,6 +232,36 @@ export default function ProfileScreen({ profile, parentAccount, onLogout, onSwit
                   </button>
                 </div>
               </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
+      {/* ── Hub Famille ── */}
+      {profile.accountType === 'family' && familyProfiles.length > 1 && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.11 }} className="mb-5">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3 px-1">
+            Ma Famille
+          </p>
+          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none px-1">
+            {familyProfiles.filter(p => p.id !== profile.id).map(fp => (
+              <button
+                key={fp.id}
+                onClick={() => onSelectProfile && onSelectProfile(fp)}
+                className="flex flex-col items-center gap-1.5 flex-shrink-0 w-16 group"
+              >
+                <div className="w-14 h-14 rounded-3xl bg-card border-2 border-transparent group-hover:border-primary flex items-center justify-center text-3xl shadow-sm transition-all">
+                  {fp.avatarEmoji}
+                </div>
+                <span className="text-[10px] font-bold text-muted-foreground group-hover:text-foreground truncate w-full text-center transition-colors">
+                  {fp.pseudo}
+                </span>
+                {fp.relation && (
+                  <span className="text-[8px] bg-muted px-1.5 py-0.5 rounded-full text-muted-foreground mt-[-2px]">
+                    {fp.relation}
+                  </span>
+                )}
+              </button>
             ))}
           </div>
         </motion.div>

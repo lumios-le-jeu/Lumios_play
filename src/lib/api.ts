@@ -98,6 +98,7 @@ function mapProfile(p: any): ChildProfile {
     seasonXp: p.season_xp ?? 0,
     winStreak: p.win_streak ?? 0,
     accountType: p.account_type || 'family',
+    relation: p.relation,
   };
 }
 
@@ -130,6 +131,7 @@ export async function createChildProfile(profile: Omit<ChildProfile, 'id' | 'cre
       season_xp: profile.seasonXp ?? 0,
       win_streak: profile.winStreak ?? 0,
       account_type: profile.accountType || 'family',
+      relation: profile.relation,
     }])
     .select()
     .single();
@@ -361,7 +363,7 @@ export async function getFriends(profileId: string): Promise<{ data: any[], erro
     .select(`
       status,
       friend:profiles!friends_friend_id_fkey (
-        id, pseudo, avatar_emoji, has_lumios, elo, city, rank_tier, rank_step
+        id, pseudo, avatar_emoji, has_lumios, elo, city, rank_tier, rank_step, season_xp
       )
     `)
     .eq('profile_id', profileId)

@@ -17,6 +17,9 @@ const AGE_RANGES: { value: AgeRange; label: string }[] = [
   { value: '18+',    label: '18 ans +' },
 ];
 
+const FAMILY_RELATIONS = ['Fils', 'Fille', 'Père', 'Mère', 'Frère', 'Sœur', 'Autre'];
+const ADULT_RELATIONS  = ['Père', 'Mère'];
+
 interface ProfileSelectorProps {
   parent: ParentAccount;
   profiles: ChildProfile[];
@@ -31,6 +34,7 @@ export default function ProfileSelector({ parent, profiles, onSelectProfile, onA
   const [avatar, setAvatar] = useState(AVATARS[0]);
   const [ageRange, setAgeRange] = useState<AgeRange>('12-14');
   const [hasLumios, setHasLumios] = useState(false);
+  const [relation, setRelation] = useState(FAMILY_RELATIONS[0]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -57,6 +61,7 @@ export default function ProfileSelector({ parent, profiles, onSelectProfile, onA
       seasonXp: 0,
       winStreak: 0,
       accountType: 'family',
+      relation: relation,
     });
     setIsLoading(false);
 
@@ -204,6 +209,27 @@ export default function ProfileSelector({ parent, profiles, onSelectProfile, onA
                 <button onClick={() => setShowAdd(false)} className="w-8 h-8 rounded-xl bg-muted flex items-center justify-center text-muted-foreground">
                   <X className="w-4 h-4" />
                 </button>
+              </div>
+
+              {/* Relation */}
+              <div className="mb-4">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 block">Rôle dans la famille</label>
+                <div className="flex flex-wrap gap-2">
+                  {FAMILY_RELATIONS.map(rel => (
+                    <button
+                      key={rel}
+                      onClick={() => {
+                        setRelation(rel);
+                        if (ADULT_RELATIONS.includes(rel)) setAgeRange('18+');
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-bold border transition-all ${
+                        relation === rel ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground'
+                      }`}
+                    >
+                      {rel}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Pseudo */}

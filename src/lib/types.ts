@@ -102,6 +102,7 @@ export interface ChildProfile {
   seasonXp: number;
   winStreak: number;
   accountType: AccountType;
+  relation?: string;
 }
 
 export interface GuestProfile {

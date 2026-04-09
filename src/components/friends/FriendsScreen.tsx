@@ -1,20 +1,22 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, UserPlus, QrCode, Swords, Wifi, WifiOff, Loader2, Check, X, Crown, TrendingUp } from 'lucide-react';
+import { Search, UserPlus, QrCode, Swords, Wifi, WifiOff, Loader2, Check, X, Crown, TrendingUp, Zap } from 'lucide-react';
 import type { ChildProfile, Friend } from '../../lib/types';
 import { getTierConfig } from '../../lib/types';
 import { getRankDisplayName } from '../../lib/ranking';
 import { getFriends, searchProfiles, addFriend, getPendingFriendRequests, acceptFriendRequest, declineFriendRequest } from '../../lib/api';
+import FriendDuelModal from '../play/FriendDuelModal';
 
 // #11 — Suppression des messages rapides et du bouton Message
 
 interface FriendsScreenProps {
   profile: ChildProfile;
+  onRefreshProfile?: () => Promise<void>;
 }
 
 type FriendFilter = 'all' | 'online';
 
-export default function FriendsScreen({ profile }: FriendsScreenProps) {
+export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScreenProps) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FriendFilter>('all');
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
@@ -25,6 +27,7 @@ export default function FriendsScreen({ profile }: FriendsScreenProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [addRequestSent, setAddRequestSent] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
+  const [showDuelModal, setShowDuelModal] = useState(false);
 
   // ── Scanner QR Code d'ajout d'ami ──
   useEffect(() => {
@@ -246,6 +249,10 @@ export default function FriendsScreen({ profile }: FriendsScreenProps) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-nunito font-black text-sm">{friend.pseudo}</span>
+                  <div className="flex items-center gap-0.5 text-amber-500 font-black text-[10px] bg-amber-50 px-1.5 py-0.5 rounded-lg border border-amber-200">
+                    <Zap className="w-2.5 h-2.5 fill-amber-500" />
+                    {friend.seasonXp ?? 0}
+                  </div>
                   {friend.hasLumios && <span className="badge-lumios badge-golden text-[10px] px-1.5 py-0.5">⚡</span>}
                 </div>
                 {/* #10 — Rang tiered au lieu de l'ELO */}
@@ -370,17 +377,29 @@ export default function FriendsScreen({ profile }: FriendsScreenProps) {
                   </p>
                   <p className="text-[10px] text-muted-foreground uppercase font-bold mt-0.5">Rang actuel</p>
                 </div>
-                <div className="p-3 rounded-2xl bg-muted/50 text-center">
+                <div className="p-3 rounded-2xl bg-primary/5 border border-primary/10 text-center">
+                  <Zap className="w-4 h-4 mx-auto mb-1 text-amber-500 fill-amber-500" />
+                  <p className="font-nunito font-black text-sm text-primary">
+                    {selectedFriend.seasonXp ?? 0} XP
+                  </p>
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold mt-0.5">Niveau Saison</p>
+                </div>
+                <div className="p-3 rounded-2xl bg-muted/50 text-center col-span-2">
                   <TrendingUp className="w-4 h-4 mx-auto mb-1 text-primary" />
                   <p className="font-nunito font-black text-sm text-primary">
-                    {(selectedFriend as any).matchCount ?? 0}
+                    {(selectedFriend as any).matchCount ?? 0} parties jouées
                   </p>
-                  <p className="text-[10px] text-muted-foreground uppercase font-bold mt-0.5">Parties jouées</p>
                 </div>
               </div>
 
               {/* Action : Défier uniquement (#11 — pas de message) */}
-              <button className="btn-primary w-full py-3">
+              <button 
+                onClick={() => {
+                  setSelectedFriend(null);
+                  setShowDuelModal(true);
+                }}
+                className="btn-primary w-full py-3"
+              >
                 <Swords className="w-5 h-5" /> Défier
               </button>
             </motion.div>
@@ -415,6 +434,17 @@ export default function FriendsScreen({ profile }: FriendsScreenProps) {
               </button>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal de Duel d'Amis */}
+      <AnimatePresence>
+        {showDuelModal && (
+          <FriendDuelModal
+            profile={profile}
+            onClose={() => setShowDuelModal(false)}
+            onRefreshProfile={onRefreshProfile}
+          />
         )}
       </AnimatePresence>
     </div>

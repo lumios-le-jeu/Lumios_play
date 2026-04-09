@@ -153,13 +153,13 @@ export default function App() {
     />,
     friends: isGuest
       ? <GuestLockScreen onCreateAccount={handleGuestConvert} />
-      : <FriendsScreen profile={currentProfile} />,
+      : <FriendsScreen profile={currentProfile} onRefreshProfile={refreshCurrentProfile} />,
     leaderboard: isGuest
       ? <GuestLockScreen onCreateAccount={handleGuestConvert} />
       : <LeaderboardScreen profile={currentProfile} onRefreshProfile={refreshCurrentProfile} />,
     profile: isGuest
       ? <GuestLockScreen onCreateAccount={handleGuestConvert} />
-      : <ProfileScreen profile={currentProfile} onLogout={handleLogout} onSwitchProfile={handleSwitchProfile} />,
+      : <ProfileScreen profile={currentProfile} onLogout={handleLogout} onSwitchProfile={handleSwitchProfile} parentAccount={parent || undefined} familyProfiles={profiles} onSelectProfile={handleProfileSelect} />,
   };
 
   return (
