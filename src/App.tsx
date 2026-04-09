@@ -24,7 +24,7 @@ export default function App() {
   const [guestProfile, setGuestProfile] = useState<GuestProfile | null>(null);
   const [isFetching, setIsFetching] = useState(false);
 
-  const handleAuthComplete = async (p: ParentAccount) => {
+  const handleAuthComplete = async (p: ParentAccount, fallbackPseudo?: string) => {
     setParent(p);
     setIsFetching(true);
     let { data } = await getProfilesForParent(p.id);
@@ -48,7 +48,7 @@ export default function App() {
       const activeProfile = data[0] || {
         id: `local-${p.id}`,
         parentId: p.id,
-        pseudo: 'Joueur',
+        pseudo: fallbackPseudo || 'Joueur',
         avatarEmoji: '🎮',
         ageRange: '18+',
         hasLumios: false,

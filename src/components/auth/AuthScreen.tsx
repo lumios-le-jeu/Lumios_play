@@ -22,7 +22,7 @@ const ADULT_RELATIONS  = ['Père', 'Mère']; // forcer 18+ pour ces rôles
 interface AuthScreenProps {
   initialView?: AuthView;
   guestTransferProfile?: ChildProfile;
-  onAuthComplete: (parent: ParentAccount) => void;
+  onAuthComplete: (parent: ParentAccount, fallbackPseudo?: string) => void;
   onGuestStart: (guest: GuestProfile) => void;
 }
 
@@ -203,7 +203,7 @@ export default function AuthScreen({ initialView, guestTransferProfile, onAuthCo
     }
 
     setIsLoading(false);
-    onAuthComplete(parentData);
+    onAuthComplete(parentData, pseudo);
   };
 
   const handleAddPendingMember = async () => {
