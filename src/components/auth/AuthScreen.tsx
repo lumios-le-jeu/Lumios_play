@@ -20,14 +20,16 @@ const FAMILY_RELATIONS = ['Fils', 'Fille', 'Père', 'Mère', 'Frère', 'Sœur', 
 const ADULT_RELATIONS  = ['Père', 'Mère']; // forcer 18+ pour ces rôles
 
 interface AuthScreenProps {
+  initialView?: AuthView;
+  guestTransferProfile?: ChildProfile;
   onAuthComplete: (parent: ParentAccount) => void;
   onGuestStart: (guest: GuestProfile) => void;
 }
 
 type AuthView = 'welcome' | 'login' | 'signup' | 'guest';
 
-export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenProps) {
-  const [view, setView] = useState<AuthView>('welcome');
+export default function AuthScreen({ initialView, guestTransferProfile, onAuthComplete, onGuestStart }: AuthScreenProps) {
+  const [view, setView] = useState<AuthView>(initialView || 'welcome');
   const [signupStep, setSignupStep] = useState(1);
 
   // Pour compte famille : 7 étapes ; individuel : 5 étapes
@@ -46,8 +48,8 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
-  const [pseudo, setPseudo]   = useState('');
-  const [avatar, setAvatar]   = useState(AVATARS[0]);
+  const [pseudo, setPseudo]   = useState(guestTransferProfile?.pseudo || '');
+  const [avatar, setAvatar]   = useState(guestTransferProfile?.avatarEmoji || AVATARS[0]);
   const [ageRange, setAgeRange] = useState<AgeRange>('18+');
   const [hasLumios, setHasLumios] = useState<boolean | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -160,6 +162,11 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
     const parentData = createdParentData;
 
     // Profil principal (le responsable / joueur)
+    const initRankTier = guestTransferProfile ? guestTransferProfile.rankTier : 'bronze';
+    const initRankStep = guestTransferProfile ? guestTransferProfile.rankStep : 0;
+    const initSeasonXp = guestTransferProfile ? guestTransferProfile.seasonXp : 0;
+    const initWinStreak = guestTransferProfile ? guestTransferProfile.winStreak : 0;
+    
     await createChildProfile({
       parentId: parentData.id,
       pseudo,
@@ -168,10 +175,10 @@ export default function AuthScreen({ onAuthComplete, onGuestStart }: AuthScreenP
       hasLumios: !!hasLumios,
       elo: 800,
       city: 'France',
-      rankTier: 'bronze',
-      rankStep: 0,
-      seasonXp: 0,
-      winStreak: 0,
+      rankTier: initRankTier,
+      rankStep: initRankStep,
+      seasonXp: initSeasonXp,
+      winStreak: initWinStreak,
       accountType,
     });
 

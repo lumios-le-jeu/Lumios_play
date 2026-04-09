@@ -31,6 +31,10 @@ export default function App() {
     setProfiles(data);
     setIsFetching(false);
 
+    // Nettoyage de l'invité après création
+    setGuestProfile(null);
+    sessionStorage.removeItem('lumios_guest');
+
     // Individuel avec 1 seul profil → accès direct
     if (p.accountType === 'individual' && data.length === 1) {
       setCurrentProfile(data[0]);
@@ -84,13 +88,22 @@ export default function App() {
   };
 
   const handleGuestConvert = () => {
-    // Retour au landing pour créer un compte
-    setGuestProfile(null);
-    setCurrentProfile(null);
+    // On garde guestProfile en mémoire pour pré-remplir et transférer l'XP
     setAuthState('landing');
   };
 
-  const refreshCurrentProfile = async () => {
+  const refreshCurrentProfile = async (updates?: Partial<ChildProfile>) => {
+    if (authState === 'guest' && currentProfile) {
+      if (updates) {
+        setCurrentProfile({ ...currentProfile, ...updates });
+        if (guestProfile) {
+          const newGuest = { ...guestProfile, ...updates };
+          setGuestProfile(newGuest);
+          sessionStorage.setItem('lumios_guest', JSON.stringify(newGuest));
+        }
+      }
+      return;
+    }
     if (!currentProfile || !parent) return;
     const { data } = await getProfilesForParent(parent.id);
     const updated = data.find(p => p.id === currentProfile.id);
@@ -113,6 +126,8 @@ export default function App() {
   if (authState === 'landing') {
     return (
       <AuthScreen
+        initialView={guestProfile ? 'signup' : 'welcome'}
+        guestTransferProfile={currentProfile || undefined}
         onAuthComplete={handleAuthComplete}
         onGuestStart={handleGuestStart}
       />

@@ -288,7 +288,19 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
   };
 
   const handleClose = async () => {
-    if (onRefreshProfile) await onRefreshProfile();
+    if (onRefreshProfile) {
+      if (result) {
+        const isClientP1 = profile.id === result.p1Id;
+        await onRefreshProfile({
+           rankTier: isClientP1 ? result.newTierP1 : result.newTierP2,
+           rankStep: isClientP1 ? result.newRankStepP1 : result.newRankStepP2,
+           seasonXp: isClientP1 ? result.seasonXpP1New : result.seasonXpP2New,
+           winStreak: isClientP1 ? result.winStreakP1New : result.winStreakP2New,
+        });
+      } else {
+        await onRefreshProfile();
+      }
+    }
     onClose();
   };
 
