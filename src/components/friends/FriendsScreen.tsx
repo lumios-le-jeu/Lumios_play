@@ -24,6 +24,57 @@ export default function FriendsScreen({ profile }: FriendsScreenProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
   const [addRequestSent, setAddRequestSent] = useState<string | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
+
+  // ── Scanner QR Code d'ajout d'ami ──
+  useEffect(() => {
+    if (!showScanner) return;
+    let html5QrCode: any = null;
+
+    const startScanner = async () => {
+      try {
+        const { Html5Qrcode } = await import('html5-qrcode');
+        const element = document.getElementById('friend-qr-scanner-div');
+        if (!element) return;
+        html5QrCode = new Html5Qrcode('friend-qr-scanner-div');
+
+        await html5QrCode.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          (decodedText: string) => {
+            html5QrCode.stop().then(async () => {
+              setShowScanner(false);
+              try {
+                const data = JSON.parse(decodedText);
+                if (data.type === 'add-friend' && data.profileId) {
+                  if (data.profileId !== profile.id) {
+                    await handleAddFriend(data.profileId);
+                    alert(`Demande d'ami envoyée à ${data.pseudo || 'ce joueur'} !`);
+                  } else {
+                    alert("Vous ne pouvez pas vous ajouter vous-même !");
+                  }
+                } else {
+                  alert('Ce QR Code n\'est pas un profil Lumios Play.');
+                }
+              } catch (err) {
+                alert('Format de QR Code invalide.');
+              }
+            }).catch(() => {});
+          }
+        );
+      } catch (err: any) {
+        if (err?.toString().includes('NotAllowedError')) {
+          alert('Accès caméra refusé.');
+        }
+      }
+    };
+
+    const timer = setTimeout(startScanner, 200);
+    return () => {
+      clearTimeout(timer);
+      if (html5QrCode?.isScanning) html5QrCode.stop().catch(() => {});
+    };
+  }, [showScanner, profile.id]);
 
   const loadFriends = async () => {
     const [{ data: friends }, { data: pending }] = await Promise.all([
@@ -135,9 +186,17 @@ export default function FriendsScreen({ profile }: FriendsScreenProps) {
       )}
 
       {/* Search */}
-      <div className="relative mb-3">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <input className="input-lumios pl-9" placeholder="Rechercher un ami…" value={search} onChange={e => setSearch(e.target.value)} />
+      <div className="flex items-center gap-2 mb-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input className="input-lumios pl-9 w-full" placeholder="Rechercher un ami…" value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+        <button
+          onClick={() => setShowScanner(true)}
+          className="w-12 h-12 flex-shrink-0 rounded-2xl bg-muted flex items-center justify-center text-muted-foreground hover:bg-primary/10 hover:text-primary transition-all shadow-sm border border-border"
+        >
+          <QrCode className="w-5 h-5" />
+        </button>
       </div>
 
       {/* Filters */}
@@ -323,6 +382,36 @@ export default function FriendsScreen({ profile }: FriendsScreenProps) {
               {/* Action : Défier uniquement (#11 — pas de message) */}
               <button className="btn-primary w-full py-3">
                 <Swords className="w-5 h-5" /> Défier
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* QR Scanner Modal */}
+      <AnimatePresence>
+        {showScanner && (
+          <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowScanner(false)}>
+            <motion.div
+              className="modal-sheet text-center"
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-nunito font-black text-lg">Scanner un ami</h3>
+                <button onClick={() => setShowScanner(false)} className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">Scannez le QR Code depuis le profil d'un joueur pour l'ajouter.</p>
+              
+              <div className="rounded-3xl overflow-hidden mb-6 relative aspect-square bg-black">
+                <div id="friend-qr-scanner-div" className="w-full h-full" />
+                <div className="absolute inset-0 border-[6px] border-primary/20 pointer-events-none rounded-3xl" />
+              </div>
+
+              <button className="btn-glass w-full py-3 text-sm text-muted-foreground" onClick={() => setShowScanner(false)}>
+                Annuler
               </button>
             </motion.div>
           </motion.div>
