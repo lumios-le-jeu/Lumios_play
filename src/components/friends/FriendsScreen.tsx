@@ -95,8 +95,14 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
 
   // #12 — Envoyer une demande (pending)
   const handleAddFriend = async (friendId: string) => {
-    await addFriend(profile.id, friendId);
-    setAddRequestSent(friendId);
+    const success = await addFriend(profile.id, friendId);
+    if (success) {
+      setAddRequestSent(friendId);
+      // Recharger la liste après un court délai
+      setTimeout(() => loadFriends(), 1000);
+    } else {
+      console.error('[FriendsScreen] addFriend failed for', friendId);
+    }
     setSearch('');
     setGlobalResults([]);
   };
@@ -219,64 +225,114 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
       <div className="flex flex-col gap-2">
         {isLoading ? (
           <div className="flex justify-center p-10"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-10 text-muted-foreground">
-            <p className="text-3xl mb-2">🔍</p>
-            <p className="font-semibold">Aucun ami trouvé</p>
-          </div>
-        ) : filtered.map((friend, i) => {
-          const tierCfg = getTierConfig(friend.rankTier || 'bronze');
-          const rankName = getRankDisplayName(friend.rankTier || 'bronze', friend.rankStep ?? 0);
-          return (
-            <motion.button
-              key={friend.id}
-              initial={{ opacity: 0, x: -12 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.05 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setSelectedFriend(friend)}
-              className="w-full flex items-center gap-3 p-3.5 card-lumios card-lumios-hover text-left"
-            >
-              {/* Avatar */}
-              <div className="relative flex-shrink-0">
-                <div className="w-12 h-12 gradient-lumios rounded-2xl flex items-center justify-center text-2xl">
-                  {friend.avatarEmoji}
-                </div>
-                <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-card ${friend.isOnline ? 'bg-emerald-400' : 'bg-muted-foreground/40'}`} />
-              </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-nunito font-black text-sm">{friend.pseudo}</span>
-                  <div className="flex items-center gap-0.5 text-amber-500 font-black text-[10px] bg-amber-50 px-1.5 py-0.5 rounded-lg border border-amber-200">
-                    <Zap className="w-2.5 h-2.5 fill-amber-500" />
-                    {friend.seasonXp ?? 0}
+        ) : search.length >= 2 ? (
+          // En mode recherche : afficher uniquement les amis qui correspondent
+          filtered.length > 0 ? (
+            filtered.map((friend, i) => {
+              const tierCfg = getTierConfig(friend.rankTier || 'bronze');
+              const rankName = getRankDisplayName(friend.rankTier || 'bronze', friend.rankStep ?? 0);
+              return (
+                <motion.button
+                  key={friend.id}
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setSelectedFriend(friend)}
+                  className="w-full flex items-center gap-3 p-3.5 card-lumios card-lumios-hover text-left"
+                >
+                  <div className="relative flex-shrink-0">
+                    <div className="w-12 h-12 gradient-lumios rounded-2xl flex items-center justify-center text-2xl">
+                      {friend.avatarEmoji}
+                    </div>
+                    <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-card ${friend.isOnline ? 'bg-emerald-400' : 'bg-muted-foreground/40'}`} />
                   </div>
-                  {friend.hasLumios && <span className="badge-lumios badge-golden text-[10px] px-1.5 py-0.5">⚡</span>}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-nunito font-black text-sm">{friend.pseudo}</span>
+                      {(friend as any).isFamily && (
+                        <span className="badge-lumios badge-blue text-[9px] px-1.5 py-0.5">👨‍👩‍👧 Famille</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-xs">{tierCfg.icon}</span>
+                      <span className="text-[10px] font-semibold" style={{ color: tierCfg.color }}>{rankName}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 text-muted-foreground flex-shrink-0">
+                    {friend.isOnline
+                      ? <><Wifi className="w-3.5 h-3.5 text-emerald-400" /><span className="text-xs text-emerald-500 font-semibold">En ligne</span></>
+                      : <WifiOff className="w-3.5 h-3.5" />
+                    }
+                  </div>
+                </motion.button>
+              );
+            })
+          ) : null // pas de message 'aucun ami' quand les résultats globaux sont affichés
+        ) : friendsList.length === 0 ? (
+          <div className="text-center py-10 text-muted-foreground">
+            <p className="text-3xl mb-2">👥</p>
+            <p className="font-semibold">Aucun ami pour l'instant</p>
+            <p className="text-sm mt-1">Recherchez des joueurs ou scannez un QR Code</p>
+          </div>
+        ) : (
+          filtered.map((friend, i) => {
+            const tierCfg = getTierConfig(friend.rankTier || 'bronze');
+            const rankName = getRankDisplayName(friend.rankTier || 'bronze', friend.rankStep ?? 0);
+            return (
+              <motion.button
+                key={friend.id}
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.05 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setSelectedFriend(friend)}
+                className="w-full flex items-center gap-3 p-3.5 card-lumios card-lumios-hover text-left"
+              >
+                {/* Avatar */}
+                <div className="relative flex-shrink-0">
+                  <div className="w-12 h-12 gradient-lumios rounded-2xl flex items-center justify-center text-2xl">
+                    {friend.avatarEmoji}
+                  </div>
+                  <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-card ${friend.isOnline ? 'bg-emerald-400' : 'bg-muted-foreground/40'}`} />
                 </div>
-                {/* #10 — Rang tiered au lieu de l'ELO */}
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="text-xs">{tierCfg.icon}</span>
-                  <span className="text-[10px] font-semibold" style={{ color: tierCfg.color }}>{rankName}</span>
-                  {(friend as any).matchCount > 0 && (
-                    <span className="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
-                      {(friend as any).matchCount} parties
-                    </span>
-                  )}
-                </div>
-              </div>
 
-              {/* Online status */}
-              <div className="flex items-center gap-1 text-muted-foreground flex-shrink-0">
-                {friend.isOnline
-                  ? <><Wifi className="w-3.5 h-3.5 text-emerald-400" /><span className="text-xs text-emerald-500 font-semibold">En ligne</span></>
-                  : <WifiOff className="w-3.5 h-3.5" />
-                }
-              </div>
-            </motion.button>
-          );
-        })}
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-nunito font-black text-sm">{friend.pseudo}</span>
+                    {(friend as any).isFamily && (
+                      <span className="badge-lumios badge-blue text-[9px] px-1.5 py-0.5">👨‍👩‍👧 Famille</span>
+                    )}
+                    <div className="flex items-center gap-0.5 text-amber-500 font-black text-[10px] bg-amber-50 px-1.5 py-0.5 rounded-lg border border-amber-200">
+                      <Zap className="w-2.5 h-2.5 fill-amber-500" />
+                      {friend.seasonXp ?? 0}
+                    </div>
+                    {friend.hasLumios && <span className="badge-lumios badge-golden text-[10px] px-1.5 py-0.5">⚡</span>}
+                  </div>
+                  {/* Rang tiered */}
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-xs">{tierCfg.icon}</span>
+                    <span className="text-[10px] font-semibold" style={{ color: tierCfg.color }}>{rankName}</span>
+                    {(friend as any).matchCount > 0 && (
+                      <span className="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
+                        {(friend as any).matchCount} parties
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Online status */}
+                <div className="flex items-center gap-1 text-muted-foreground flex-shrink-0">
+                  {friend.isOnline
+                    ? <><Wifi className="w-3.5 h-3.5 text-emerald-400" /><span className="text-xs text-emerald-500 font-semibold">En ligne</span></>
+                    : <WifiOff className="w-3.5 h-3.5" />
+                  }
+                </div>
+              </motion.button>
+            );
+          })
+        )}
 
         {/* Global Search Results */}
         {search.length >= 2 && (

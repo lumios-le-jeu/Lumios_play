@@ -2,17 +2,18 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Eye, EyeOff, ChevronRight, ChevronLeft, Check, Gamepad2, QrCode, Users, User } from 'lucide-react';
 import type { ParentAccount, AccountType, AgeRange, GuestProfile } from '../../lib/types';
+import { INDIVIDUAL_ALLOWED_AGES } from '../../lib/types';
 import { validatePseudo } from '../../lib/utils';
 import { createParentAccount, loginParent, createChildProfile, isEmailRegistered, isPseudoTaken } from '../../lib/api';
 import { Loader2 } from 'lucide-react';
 
 const AVATARS = ['🦁', '🐯', '🦊', '🐺', '🦅', '🦈', '🐉', '🦋', '🐼', '🦄', '🐸', '🦖'];
 const AGE_RANGES: { value: AgeRange; label: string; sub: string }[] = [
-  { value: '6-8',   label: '6 – 8 ans',   sub: 'Compte famille requis' },
-  { value: '9-11',  label: '9 – 11 ans',  sub: 'Compte famille requis' },
-  { value: '12-14', label: '12 – 14 ans', sub: '' },
-  { value: '15-17', label: '15 – 17 ans', sub: '' },
-  { value: '18+',    label: '18 ans +',    sub: 'Adulte' },
+  { value: '4-6',   label: '4 – 6 ans',   sub: 'Compte famille requis' },
+  { value: '7-9',   label: '7 – 9 ans',   sub: 'Compte famille requis' },
+  { value: '10-13', label: '10 – 13 ans', sub: 'Compte famille requis' },
+  { value: '14-18', label: '14 – 18 ans', sub: '' },
+  { value: '18+',   label: '18 ans +',    sub: 'Adulte' },
 ];
 
 // #1 — Père & Mère ajoutés  (adultes +18)
@@ -64,7 +65,7 @@ export default function AuthScreen({ initialView, guestTransferProfile, onAuthCo
   const [memberLastName, setMemberLastName]   = useState('');
   const [memberPseudo, setMemberPseudo] = useState('');
   const [memberAvatar, setMemberAvatar] = useState(AVATARS[2]);
-  const [memberAge, setMemberAge] = useState<AgeRange>('9-11');
+  const [memberAge, setMemberAge] = useState<AgeRange>('7-9');
   const [memberRelation, setMemberRelation] = useState(FAMILY_RELATIONS[0]);
   const [pendingMembers, setPendingMembers] = useState<{
     firstName: string; lastName: string; pseudo: string; avatar: string; ageRange: AgeRange; relation: string;
@@ -134,6 +135,14 @@ export default function AuthScreen({ initialView, guestTransferProfile, onAuthCo
       setIsLoading(false);
       if (taken) {
         setErrors({ pseudo: 'Ce pseudo est déjà pris' });
+        return;
+      }
+    }
+
+    // Bloquer compte individuel si age < 14
+    if (signupStep === ageStep && accountType === 'individual') {
+      if (!INDIVIDUAL_ALLOWED_AGES.includes(ageRange)) {
+        setErrors({ ageRange: 'Le compte individuel est réservé aux 14 ans et plus. Créez un compte Famille pour les enfants.' });
         return;
       }
     }
@@ -664,27 +673,41 @@ export default function AuthScreen({ initialView, guestTransferProfile, onAuthCo
                       <h2 className="text-xl font-nunito font-black mb-0.5">Tranche d'âge</h2>
                       <p className="text-muted-foreground text-sm">Pour personnaliser l'expérience.</p>
                     </div>
+                    {errors.ageRange && (
+                      <div className="p-3 rounded-xl border border-accent/30 bg-accent/5">
+                        <p className="text-accent text-sm">{errors.ageRange}</p>
+                      </div>
+                    )}
                     <div className="flex flex-col gap-2">
-                      {AGE_RANGES.map(ar => (
-                        <motion.button
-                          key={ar.value}
-                          whileTap={{ scale: 0.98 }}
-                          onClick={() => setAgeRange(ar.value)}
-                          className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
-                            ageRange === ar.value ? 'border-primary bg-primary/5' : 'border-border bg-card hover:border-border/80'
-                          }`}
-                        >
-                          <div className="text-left">
-                            <p className="font-nunito font-bold">{ar.label}</p>
-                            {ar.sub && <p className="text-xs text-muted-foreground">{ar.sub}</p>}
-                          </div>
-                          {ageRange === ar.value && (
-                            <div className="w-6 h-6 gradient-lumios rounded-full flex items-center justify-center">
-                              <Check className="w-3.5 h-3.5 text-white" />
+                      {AGE_RANGES.map(ar => {
+                        const isLockedForIndividual = accountType === 'individual' && !INDIVIDUAL_ALLOWED_AGES.includes(ar.value);
+                        return (
+                          <motion.button
+                            key={ar.value}
+                            whileTap={{ scale: isLockedForIndividual ? 1 : 0.98 }}
+                            onClick={() => !isLockedForIndividual && setAgeRange(ar.value)}
+                            disabled={isLockedForIndividual}
+                            className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
+                              isLockedForIndividual
+                                ? 'border-border/30 bg-muted/30 opacity-40 cursor-not-allowed'
+                                : ageRange === ar.value ? 'border-primary bg-primary/5' : 'border-border bg-card hover:border-border/80'
+                            }`}
+                          >
+                            <div className="text-left">
+                              <p className="font-nunito font-bold">{ar.label}</p>
+                              {ar.sub && <p className="text-xs text-muted-foreground">{ar.sub}</p>}
+                              {isLockedForIndividual && (
+                                <p className="text-xs text-muted-foreground/60">Indisponible en compte individuel</p>
+                              )}
                             </div>
-                          )}
-                        </motion.button>
-                      ))}
+                            {ageRange === ar.value && !isLockedForIndividual && (
+                              <div className="w-6 h-6 gradient-lumios rounded-full flex items-center justify-center">
+                                <Check className="w-3.5 h-3.5 text-white" />
+                              </div>
+                            )}
+                          </motion.button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

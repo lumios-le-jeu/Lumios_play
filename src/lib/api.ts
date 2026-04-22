@@ -87,6 +87,8 @@ function mapProfile(p: any): ChildProfile {
     id: p.id,
     parentId: p.parent_id,
     pseudo: p.pseudo,
+    firstName: p.first_name,
+    lastName: p.last_name,
     avatarEmoji: p.avatar_emoji,
     ageRange: p.age_range,
     hasLumios: p.has_lumios,
@@ -121,6 +123,8 @@ export async function createChildProfile(profile: Omit<ChildProfile, 'id' | 'cre
     .insert([{
       parent_id: profile.parentId,
       pseudo: profile.pseudo,
+      first_name: profile.firstName ?? null,
+      last_name: profile.lastName ?? null,
       avatar_emoji: profile.avatarEmoji,
       age_range: profile.ageRange,
       has_lumios: profile.hasLumios,
@@ -133,6 +137,34 @@ export async function createChildProfile(profile: Omit<ChildProfile, 'id' | 'cre
       account_type: profile.accountType || 'family',
       relation: profile.relation,
     }])
+    .select()
+    .single();
+
+  if (error || !data) return { data: null, error };
+  return { data: mapProfile(data), error: null };
+}
+
+export async function updateChildProfile(profileId: string, updates: {
+  pseudo?: string;
+  firstName?: string;
+  lastName?: string;
+  avatarEmoji?: string;
+  ageRange?: string;
+  hasLumios?: boolean;
+  relation?: string;
+}): Promise<{ data: ChildProfile | null; error: any }> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({
+      ...(updates.pseudo      !== undefined && { pseudo:       updates.pseudo }),
+      ...(updates.firstName   !== undefined && { first_name:  updates.firstName }),
+      ...(updates.lastName    !== undefined && { last_name:   updates.lastName }),
+      ...(updates.avatarEmoji !== undefined && { avatar_emoji: updates.avatarEmoji }),
+      ...(updates.ageRange    !== undefined && { age_range:   updates.ageRange }),
+      ...(updates.hasLumios   !== undefined && { has_lumios:  updates.hasLumios }),
+      ...(updates.relation    !== undefined && { relation:    updates.relation }),
+    })
+    .eq('id', profileId)
     .select()
     .single();
 
@@ -358,6 +390,14 @@ export async function getMatchHistory(profileId: string): Promise<{ data: any[],
 // ─── FRIENDS ─────────────────────────────────────────────────────────────────
 
 export async function getFriends(profileId: string): Promise<{ data: any[], error: any }> {
+  // Récupérer le parent_id du profil courant pour trouver les membres famille
+  const { data: selfData } = await supabase
+    .from('profiles')
+    .select('parent_id')
+    .eq('id', profileId)
+    .single();
+
+  // 1. Amis acceptés
   const { data, error } = await supabase
     .from('friends')
     .select(`
@@ -369,9 +409,11 @@ export async function getFriends(profileId: string): Promise<{ data: any[], erro
     .eq('profile_id', profileId)
     .eq('status', 'accepted');
 
-  if (error || !data) return { data: [], error };
+  if (error) return { data: [], error };
 
-  const friendsWithCounts = await Promise.all(data.map(async (f: any) => {
+  const acceptedFriendIds = new Set((data || []).map((f: any) => f.friend.id));
+
+  const friendsWithCounts = await Promise.all((data || []).map(async (f: any) => {
     const { count } = await supabase
       .from('matches')
       .select('*', { count: 'exact', head: true })
@@ -389,10 +431,47 @@ export async function getFriends(profileId: string): Promise<{ data: any[], erro
       rankTier: f.friend.rank_tier || 'bronze',
       rankStep: f.friend.rank_step ?? 0,
       matchCount: count || 0,
+      isFamily: false,
     };
   }));
 
-  return { data: friendsWithCounts, error: null };
+  // 2. Membres de la même famille (même parent_id, hors soi-même)
+  let familyFriends: any[] = [];
+  if (selfData?.parent_id) {
+    const { data: familyData } = await supabase
+      .from('profiles')
+      .select('id, pseudo, avatar_emoji, has_lumios, elo, city, rank_tier, rank_step, season_xp, relation')
+      .eq('parent_id', selfData.parent_id)
+      .neq('id', profileId);
+
+    if (familyData) {
+      for (const fp of familyData) {
+        if (acceptedFriendIds.has(fp.id)) continue; // déjà dans amis acceptés
+        const { count } = await supabase
+          .from('matches')
+          .select('*', { count: 'exact', head: true })
+          .or(`and(player1_id.eq.${profileId},player2_id.eq.${fp.id}),and(player1_id.eq.${fp.id},player2_id.eq.${profileId})`);
+
+        familyFriends.push({
+          id: fp.id,
+          pseudo: fp.pseudo,
+          avatarEmoji: fp.avatar_emoji,
+          hasLumios: fp.has_lumios,
+          elo: fp.elo,
+          city: fp.city,
+          isOnline: Math.random() > 0.5,
+          status: 'accepted',
+          rankTier: fp.rank_tier || 'bronze',
+          rankStep: fp.rank_step ?? 0,
+          matchCount: count || 0,
+          isFamily: true,
+          relation: fp.relation,
+        });
+      }
+    }
+  }
+
+  return { data: [...familyFriends, ...friendsWithCounts], error: null };
 }
 
 export async function getPendingFriendRequests(profileId: string): Promise<{ data: any[], error: any }> {

@@ -6,7 +6,10 @@ export const MYTHIC_TOP_N = 100;
 
 // ─── Account Types ──────────────────────────────────────────────────────────────
 export type AccountType = 'family' | 'individual';
-export type AgeRange = '6-8' | '9-11' | '12-14' | '15-17' | '18+';
+export type AgeRange = '4-6' | '7-9' | '10-13' | '14-18' | '18+';
+
+/** Tranches qui autorisent un compte individuel (14 ans et +) */
+export const INDIVIDUAL_ALLOWED_AGES: AgeRange[] = ['14-18', '18+'];
 
 export interface ParentAccount {
   id: string;
@@ -90,6 +93,8 @@ export interface ChildProfile {
   id: string;
   parentId: string;
   pseudo: string;
+  firstName?: string;
+  lastName?: string;
   avatarEmoji: string;
   ageRange: AgeRange;
   hasLumios: boolean;

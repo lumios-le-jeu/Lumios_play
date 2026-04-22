@@ -5,16 +5,16 @@ import { QRCodeSVG } from 'qrcode.react';
 import type { ChildProfile, ParentAccount, AgeRange } from '../../lib/types';
 import { getTierConfig } from '../../lib/types';
 import { validatePseudo, getRankDisplayName } from '../../lib/utils';
-import { createChildProfile } from '../../lib/api';
+import { createChildProfile, updateChildProfile } from '../../lib/api';
 import { Loader2 } from 'lucide-react';
 
 const AVATARS = ['🦁', '🐯', '🦊', '🐺', '🦅', '🦈', '🐉', '🦋', '🐼', '🦄', '🐸', '🦖'];
 const AGE_RANGES: { value: AgeRange; label: string }[] = [
-  { value: '6-8', label: '6 – 8 ans' },
-  { value: '9-11', label: '9 – 11 ans' },
-  { value: '12-14', label: '12 – 14 ans' },
-  { value: '15-17', label: '15 – 17 ans' },
-  { value: '18+',    label: '18 ans +' },
+  { value: '4-6',   label: '4 – 6 ans' },
+  { value: '7-9',   label: '7 – 9 ans' },
+  { value: '10-13', label: '10 – 13 ans' },
+  { value: '14-18', label: '14 – 18 ans' },
+  { value: '18+',   label: '18 ans +' },
 ];
 
 const FAMILY_RELATIONS = ['Fils', 'Fille', 'Père', 'Mère', 'Frère', 'Sœur', 'Autre'];
@@ -28,15 +28,32 @@ interface ProfileSelectorProps {
 }
 
 export default function ProfileSelector({ parent, profiles, onSelectProfile, onAddProfile }: ProfileSelectorProps) {
-  const [showAdd, setShowAdd] = useState(false);
+  // ── Add member state ──────────────────────────────────────────────────────
+  const [showAdd, setShowAdd]       = useState(false);
+  const [firstName, setFirstName]   = useState('');
+  const [lastName, setLastName]     = useState('');
+  const [pseudo, setPseudo]         = useState('');
+  const [avatar, setAvatar]         = useState(AVATARS[0]);
+  const [ageRange, setAgeRange]     = useState<AgeRange>('7-9');
+  const [hasLumios, setHasLumios]   = useState(false);
+  const [relation, setRelation]     = useState(FAMILY_RELATIONS[0]);
+  const [error, setError]           = useState('');
+  const [isLoading, setIsLoading]   = useState(false);
+
+  // ── QR state ──────────────────────────────────────────────────────────────
   const [showQR, setShowQR] = useState(false);
-  const [pseudo, setPseudo] = useState('');
-  const [avatar, setAvatar] = useState(AVATARS[0]);
-  const [ageRange, setAgeRange] = useState<AgeRange>('12-14');
-  const [hasLumios, setHasLumios] = useState(false);
-  const [relation, setRelation] = useState(FAMILY_RELATIONS[0]);
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+
+  // ── Edit member state ─────────────────────────────────────────────────────
+  const [editingProfile, setEditingProfile]       = useState<ChildProfile | null>(null);
+  const [editFirstName, setEditFirstName]         = useState('');
+  const [editLastName, setEditLastName]           = useState('');
+  const [editPseudo, setEditPseudo]               = useState('');
+  const [editAvatar, setEditAvatar]               = useState(AVATARS[0]);
+  const [editAgeRange, setEditAgeRange]           = useState<AgeRange>('7-9');
+  const [editHasLumios, setEditHasLumios]         = useState(false);
+  const [editRelation, setEditRelation]           = useState(FAMILY_RELATIONS[0]);
+  const [editError, setEditError]                 = useState('');
+  const [editLoading, setEditLoading]             = useState(false);
 
   const qrAddMemberPayload = JSON.stringify({
     type: 'add-family-member',
@@ -44,15 +61,63 @@ export default function ProfileSelector({ parent, profiles, onSelectProfile, onA
     parentName: parent.name,
   });
 
+  // ── Open edit modal ───────────────────────────────────────────────────────
+  const openEdit = (profile: ChildProfile, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingProfile(profile);
+    setEditFirstName(profile.firstName ?? '');
+    setEditLastName(profile.lastName ?? '');
+    setEditPseudo(profile.pseudo);
+    setEditAvatar(profile.avatarEmoji);
+    setEditAgeRange(profile.ageRange);
+    setEditHasLumios(profile.hasLumios);
+    setEditRelation(profile.relation ?? FAMILY_RELATIONS[0]);
+    setEditError('');
+  };
+
+  // ── Save edit ─────────────────────────────────────────────────────────────
+  const handleSaveEdit = async () => {
+    if (!editingProfile) return;
+    const err = validatePseudo(editPseudo);
+    if (err) { setEditError(err); return; }
+
+    setEditLoading(true);
+    const { data: updated, error: apiErr } = await updateChildProfile(editingProfile.id, {
+      pseudo:      editPseudo,
+      firstName:   editFirstName,
+      lastName:    editLastName,
+      avatarEmoji: editAvatar,
+      ageRange:    editAgeRange,
+      hasLumios:   editHasLumios,
+      relation:    editRelation,
+    });
+    setEditLoading(false);
+
+    if (apiErr || !updated) {
+      setEditError('Erreur lors de la mise à jour du profil.');
+      return;
+    }
+
+    // Mettre à jour la liste localement via onAddProfile (réutilisé comme "refresh")
+    onAddProfile(updated);
+    setEditingProfile(null);
+  };
+
+  // ── Add member ────────────────────────────────────────────────────────────
   const handleAdd = async () => {
     const err = validatePseudo(pseudo);
     if (err) { setError(err); return; }
+    if (!firstName.trim()) { setError('Le prénom est requis'); return; }
+
     setIsLoading(true);
+    const finalAge = ADULT_RELATIONS.includes(relation) ? '18+' : ageRange;
     const { data: newProfile, error: apiErr } = await createChildProfile({
       parentId: parent.id,
       pseudo,
+      firstName: firstName.trim(),
+      lastName: lastName.trim() || undefined,
       avatarEmoji: avatar,
-      ageRange,
+      ageRange: finalAge,
       hasLumios,
       elo: 800,
       city: 'France',
@@ -72,10 +137,13 @@ export default function ProfileSelector({ parent, profiles, onSelectProfile, onA
 
     onAddProfile(newProfile);
     setShowAdd(false);
+    setFirstName('');
+    setLastName('');
     setPseudo('');
     setAvatar(AVATARS[0]);
-    setAgeRange('12-14');
+    setAgeRange('7-9');
     setHasLumios(false);
+    setRelation(FAMILY_RELATIONS[0]);
     setError('');
   };
 
@@ -126,6 +194,11 @@ export default function ProfileSelector({ parent, profiles, onSelectProfile, onA
                       <span className="badge-lumios badge-golden">⚡ Lumios</span>
                     )}
                   </div>
+                  {(profile.firstName || profile.lastName) && (
+                    <p className="text-xs text-muted-foreground truncate">
+                      {[profile.firstName, profile.lastName].filter(Boolean).join(' ')}
+                    </p>
+                  )}
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-xs">{tierCfg.icon}</span>
                     <span className="text-xs font-bold" style={{ color: tierCfg.color }}>{rankName}</span>
@@ -133,16 +206,19 @@ export default function ProfileSelector({ parent, profiles, onSelectProfile, onA
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={e => { e.stopPropagation(); }}
-                    className="w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                </div>
+                {/* Edit action */}
+                {parent.accountType === 'family' && (
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => openEdit(profile, e)}
+                      className="w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+                      title="Modifier le profil"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </motion.button>
             );
           })}
@@ -186,7 +262,7 @@ export default function ProfileSelector({ parent, profiles, onSelectProfile, onA
         )}
       </div>
 
-      {/* Add Profile Modal */}
+      {/* ── Add Profile Modal ─────────────────────────────────────────────────── */}
       <AnimatePresence>
         {showAdd && (
           <motion.div
@@ -232,10 +308,34 @@ export default function ProfileSelector({ parent, profiles, onSelectProfile, onA
                 </div>
               </div>
 
+              {/* Prénom + Nom */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1 block">Prénom *</label>
+                  <input
+                    className="input-lumios"
+                    placeholder="Léo"
+                    maxLength={20}
+                    value={firstName}
+                    onChange={e => { setFirstName(e.target.value); setError(''); }}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1 block">Nom</label>
+                  <input
+                    className="input-lumios"
+                    placeholder="Dupont"
+                    maxLength={30}
+                    value={lastName}
+                    onChange={e => setLastName(e.target.value)}
+                  />
+                </div>
+              </div>
+
               {/* Pseudo */}
               <div className="mb-4">
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1 block">Pseudo</label>
-                <input className="input-lumios" placeholder="Pseudo du membre" maxLength={20} value={pseudo} onChange={e => { setPseudo(e.target.value); setError(''); }} />
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1 block">Pseudo de jeu</label>
+                <input className="input-lumios" placeholder="LeoFire" maxLength={20} value={pseudo} onChange={e => { setPseudo(e.target.value); setError(''); }} />
                 {error && <p className="text-accent text-xs mt-1">{error}</p>}
               </div>
 
@@ -251,17 +351,22 @@ export default function ProfileSelector({ parent, profiles, onSelectProfile, onA
                 </div>
               </div>
 
-              {/* Age Range */}
-              <div className="mb-4">
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 block">Tranche d'âge</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {AGE_RANGES.map(ar => (
-                    <button key={ar.value} onClick={() => setAgeRange(ar.value)} className={`p-2 rounded-xl text-sm font-bold border-2 transition-all ${ageRange === ar.value ? 'border-primary bg-primary/5' : 'border-border bg-card'}`}>
-                      {ar.label}
-                    </button>
-                  ))}
+              {/* Age Range — masqué si adulte */}
+              {!ADULT_RELATIONS.includes(relation) && (
+                <div className="mb-4">
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 block">Tranche d'âge</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {AGE_RANGES.map(ar => (
+                      <button key={ar.value} onClick={() => setAgeRange(ar.value)} className={`p-2 rounded-xl text-sm font-bold border-2 transition-all ${ageRange === ar.value ? 'border-primary bg-primary/5' : 'border-border bg-card'}`}>
+                        {ar.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
+              {ADULT_RELATIONS.includes(relation) && (
+                <p className="text-xs text-muted-foreground italic mb-4">🔒 Adulte +18 ans (automatique pour Père / Mère)</p>
+              )}
 
               {/* Has Lumios */}
               <div className="mb-6 flex items-center justify-between p-3 bg-muted rounded-xl">
@@ -285,7 +390,139 @@ export default function ProfileSelector({ parent, profiles, onSelectProfile, onA
         )}
       </AnimatePresence>
 
-      {/* QR Code Modal for family linking */}
+      {/* ── Edit Profile Modal ────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {editingProfile && (
+          <motion.div
+            className="modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setEditingProfile(null)}
+          >
+            <motion.div
+              className="modal-sheet"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-2">
+                  <Pencil className="w-5 h-5 text-primary" />
+                  <h3 className="font-nunito font-black text-lg">Modifier le profil</h3>
+                </div>
+                <button onClick={() => setEditingProfile(null)} className="w-8 h-8 rounded-xl bg-muted flex items-center justify-center text-muted-foreground">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Relation */}
+              <div className="mb-4">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 block">Rôle dans la famille</label>
+                <div className="flex flex-wrap gap-2">
+                  {FAMILY_RELATIONS.map(rel => (
+                    <button
+                      key={rel}
+                      onClick={() => {
+                        setEditRelation(rel);
+                        if (ADULT_RELATIONS.includes(rel)) setEditAgeRange('18+');
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-bold border transition-all ${
+                        editRelation === rel ? 'border-primary bg-primary/5 text-primary' : 'border-border text-muted-foreground'
+                      }`}
+                    >
+                      {rel}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Prénom + Nom */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1 block">Prénom</label>
+                  <input
+                    className="input-lumios"
+                    placeholder="Léo"
+                    maxLength={20}
+                    value={editFirstName}
+                    onChange={e => setEditFirstName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1 block">Nom</label>
+                  <input
+                    className="input-lumios"
+                    placeholder="Dupont"
+                    maxLength={30}
+                    value={editLastName}
+                    onChange={e => setEditLastName(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Pseudo */}
+              <div className="mb-4">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1 block">Pseudo de jeu</label>
+                <input className="input-lumios" placeholder="LeoFire" maxLength={20} value={editPseudo} onChange={e => { setEditPseudo(e.target.value); setEditError(''); }} />
+                {editError && <p className="text-accent text-xs mt-1">{editError}</p>}
+              </div>
+
+              {/* Avatar */}
+              <div className="mb-4">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 block">Avatar</label>
+                <div className="grid grid-cols-6 gap-2">
+                  {AVATARS.map(a => (
+                    <button key={a} onClick={() => setEditAvatar(a)} className={`aspect-square rounded-xl text-2xl flex items-center justify-center transition-all ${editAvatar === a ? 'gradient-lumios scale-105' : 'bg-muted'}`}>
+                      {a}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Age Range */}
+              {!ADULT_RELATIONS.includes(editRelation) && (
+                <div className="mb-4">
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 block">Tranche d'âge</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {AGE_RANGES.map(ar => (
+                      <button key={ar.value} onClick={() => setEditAgeRange(ar.value)} className={`p-2 rounded-xl text-sm font-bold border-2 transition-all ${editAgeRange === ar.value ? 'border-primary bg-primary/5' : 'border-border bg-card'}`}>
+                        {ar.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {ADULT_RELATIONS.includes(editRelation) && (
+                <p className="text-xs text-muted-foreground italic mb-4">🔒 Adulte +18 ans (automatique pour Père / Mère)</p>
+              )}
+
+              {/* Has Lumios */}
+              <div className="mb-6 flex items-center justify-between p-3 bg-muted rounded-xl">
+                <span className="font-semibold text-sm">Possède un Lumios ⚡</span>
+                <motion.button
+                  onClick={() => setEditHasLumios(p => !p)}
+                  className={`w-12 h-6 rounded-full flex items-center transition-all ${editHasLumios ? 'gradient-golden justify-end' : 'bg-border justify-start'}`}
+                  style={{ padding: '2px' }}
+                >
+                  <motion.div layout className="w-5 h-5 bg-white rounded-full shadow-sm" />
+                </motion.button>
+              </div>
+
+              <div className="flex gap-3">
+                <button className="btn-glass flex-1 py-3" onClick={() => setEditingProfile(null)}>Annuler</button>
+                <button className="btn-primary flex-1 py-3" onClick={handleSaveEdit} disabled={editLoading}>
+                  {editLoading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : <><Check className="w-4 h-4" /> Enregistrer</>}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── QR Code Modal for family linking ──────────────────────────────────── */}
       <AnimatePresence>
         {showQR && (
           <motion.div
