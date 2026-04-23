@@ -248,7 +248,7 @@ io.on('connection', (socket) => {
               score: masterVote.score,
               score_detail: masterVote.scoreDetail,
               match_mode: masterVote.matchMode,
-              match_type: 'duel',
+              type: masterVote.matchMode === 'competitive' ? 'ranked' : 'friendly',
               step_change_p1: masterVote.stepChangeP1,
               step_change_p2: masterVote.stepChangeP2,
               comment_winner: masterVote.commentWinner,
@@ -259,15 +259,24 @@ io.on('connection', (socket) => {
 
             // 2. Mettre à jour le profil P1 (hôte)
             if (masterVote.matchMode === 'competitive') {
+              const { data: p1Data } = await supabase.from('profiles').select('season_xp, win_streak').eq('id', masterVote.p1Id).single();
+              const { data: p2Data } = await supabase.from('profiles').select('season_xp, win_streak').eq('id', masterVote.p2Id).single();
+              
+              const p1Won = masterVote.winnerId === masterVote.p1Id;
+
               await supabase.from('profiles').update({
                 rank_tier: masterVote.newTierP1,
                 rank_step: masterVote.newRankStepP1,
+                season_xp: Math.max(0, (p1Data?.season_xp || 0) + (masterVote.xpP1 || 0)),
+                win_streak: p1Won ? (p1Data?.win_streak || 0) + 1 : 0
               }).eq('id', masterVote.p1Id);
 
               // 3. Mettre à jour le profil P2 (scanner)
               await supabase.from('profiles').update({
                 rank_tier: masterVote.newTierP2,
                 rank_step: masterVote.newRankStepP2,
+                season_xp: Math.max(0, (p2Data?.season_xp || 0) + (masterVote.xpP2 || 0)),
+                win_streak: !p1Won ? (p2Data?.win_streak || 0) + 1 : 0
               }).eq('id', masterVote.p2Id);
             }
 

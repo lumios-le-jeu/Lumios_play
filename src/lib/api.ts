@@ -241,7 +241,7 @@ export async function submitMatchResult(match: {
       score: match.score,
       score_detail: match.scoreDetail,
       match_mode: match.matchMode,
-      match_type: match.matchType,
+      type: match.matchMode === 'competitive' ? 'ranked' : 'friendly',
       format: 'BO3',
       step_change_p1: match.stepChangeP1,
       step_change_p2: match.stepChangeP2,
