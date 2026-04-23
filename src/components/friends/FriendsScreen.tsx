@@ -26,6 +26,8 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
   const [isLoading, setIsLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
   const [addRequestSent, setAddRequestSent] = useState<string | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const [showDuelModal, setShowDuelModal] = useState(false);
 
@@ -93,15 +95,17 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
     loadFriends();
   }, [profile.id]);
 
-  // #12 — Envoyer une demande (pending)
+  // #5 — Envoyer une demande (pending)
   const handleAddFriend = async (friendId: string) => {
+    setIsAdding(friendId);
+    setAddError(null);
     const success = await addFriend(profile.id, friendId);
+    setIsAdding(null);
     if (success) {
       setAddRequestSent(friendId);
-      // Recharger la liste après un court délai
       setTimeout(() => loadFriends(), 1000);
     } else {
-      console.error('[FriendsScreen] addFriend failed for', friendId);
+      setAddError('Erreur lors de l\'envoi. Veuillez réessayer.');
     }
     setSearch('');
     setGlobalResults([]);
@@ -226,7 +230,7 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
         {isLoading ? (
           <div className="flex justify-center p-10"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
         ) : search.length >= 2 ? (
-          // En mode recherche : afficher uniquement les amis qui correspondent
+          // En mode recherche : afficher les amis qui correspondent
           filtered.length > 0 ? (
             filtered.map((friend, i) => {
               const tierCfg = getTierConfig(friend.rankTier || 'bronze');
@@ -250,7 +254,7 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-nunito font-black text-sm">{friend.pseudo}</span>
-                      {(friend as any).isFamily && (
+                      {friend.isFamily && (
                         <span className="badge-lumios badge-blue text-[9px] px-1.5 py-0.5">👨‍👩‍👧 Famille</span>
                       )}
                     </div>
@@ -268,7 +272,11 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
                 </motion.button>
               );
             })
-          ) : null // pas de message 'aucun ami' quand les résultats globaux sont affichés
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-3 italic">
+              "{search}" n'est pas encore dans votre liste
+            </p>
+          )
         ) : friendsList.length === 0 ? (
           <div className="text-center py-10 text-muted-foreground">
             <p className="text-3xl mb-2">👥</p>
@@ -362,11 +370,16 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
                         </div>
                       </div>
                       <button
-                        onClick={() => !isRequested && handleAddFriend(user.id)}
-                        disabled={isRequested}
+                        onClick={() => !isRequested && !isAdding && handleAddFriend(user.id)}
+                        disabled={isRequested || isAdding === user.id}
                         className={`py-1.5 px-3 text-xs rounded-xl font-nunito font-bold flex items-center gap-1 transition-all ${isRequested ? 'bg-muted text-muted-foreground' : 'btn-primary'}`}
                       >
-                        {isRequested ? <><Check className="w-3.5 h-3.5" /> Demande envoyée</> : <><UserPlus className="w-3.5 h-3.5" /> Ajouter</>}
+                        {isAdding === user.id
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : isRequested
+                            ? <><Check className="w-3.5 h-3.5" /> Demande envoyée</>
+                            : <><UserPlus className="w-3.5 h-3.5" /> Ajouter</>
+                        }
                       </button>
                     </div>
                   );
@@ -374,6 +387,10 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
               </div>
             )}
           </div>
+        )}
+        {/* Erreur d'ajout */}
+        {addError && (
+          <p className="text-xs text-red-500 font-bold text-center mt-2 p-2 bg-red-50 rounded-xl">{addError}</p>
         )}
       </div>
 

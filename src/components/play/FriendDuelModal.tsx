@@ -7,7 +7,7 @@ import { getTierConfig } from '../../lib/types';
 import { generateGameCode, formatStepChange } from '../../lib/utils';
 import { getRankDisplayName, calculateRankingUpdate } from '../../lib/ranking';
 import { getSocket } from '../../lib/socket';
-import { getDailyDuelCount, submitMatchResult, uploadMatchMedia, updateProfileRank } from '../../lib/api';
+import { getDailyDuelCount, submitMatchResult, uploadMatchMedia, updateProfileRank, addFriend, getFriends } from '../../lib/api';
 import { MAX_COMPETITIVE_DUELS_PER_DAY } from '../../lib/ranking';
 
 interface FriendDuelModalProps {
@@ -24,12 +24,14 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
   const [gameCode, setGameCode] = useState('');
   const [isHost, setIsHost] = useState(false);
   const [opponent, setOpponent] = useState<{ id: string; pseudo: string; elo: number; rankTier: string; rankStep: number; avatarEmoji: string } | null>(null);
-  const [result, setResult] = useState<{ winnerId: string; stepChangeP1: number; stepChangeP2: number; xpP1: number; xpP2: number; bonuses: string[] } | null>(null);
+  const [result, setResult] = useState<{ winnerId: string; stepChangeP1: number; stepChangeP2: number; xpP1: number; xpP2: number; bonuses: string[]; p1Id?: string; newTierP1?: string; newRankStepP1?: number; newTierP2?: string; newRankStepP2?: number; seasonXpP1New?: number; seasonXpP2New?: number; winStreakP1New?: number; winStreakP2New?: number } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const [showManual, setShowManual] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
   const [mismatchError, setMismatchError] = useState<string | null>(null);
+  const [isFriendAlready, setIsFriendAlready] = useState<boolean | null>(null);
+  const [friendAdded, setFriendAdded] = useState(false);
 
   // Score entry
   const [selectedScore, setSelectedScore] = useState<ScoreDetail | null>(null);
@@ -80,6 +82,14 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
       setResult(data);
       setStep('result');
       setIsProcessing(false);
+      // #3 — Vérifier si l'adversaire est déjà ami
+      if (data.opponentId || opponent?.id) {
+        const oppId = data.opponentId || opponent?.id;
+        getFriends(profile.id).then(({ data: friends }) => {
+          const already = friends.some((f: any) => f.id === oppId);
+          setIsFriendAlready(already);
+        });
+      }
     };
 
     const handleLobbyCreated = (code: string) => {
@@ -751,6 +761,27 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
 
               {matchMode === 'friendly' && (
                 <p className="text-xs text-muted-foreground italic text-center">Match amical — pas d'impact sur le classement</p>
+              )}
+
+              {/* #3 — Suggestion d'ajout en ami */}
+              {isFriendAlready === false && opponent && (
+                <motion.button
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  onClick={async () => {
+                    if (friendAdded) return;
+                    const ok = await addFriend(profile.id, opponent.id);
+                    if (ok) setFriendAdded(true);
+                  }}
+                  disabled={friendAdded}
+                  className={`w-full py-3 rounded-2xl border-2 font-nunito font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                    friendAdded
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
+                      : 'border-primary/30 bg-primary/5 text-primary hover:bg-primary/10'
+                  }`}
+                >
+                  {friendAdded ? '✅ Demande envoyée !' : `👥 Ajouter ${opponent.pseudo} en ami`}
+                </motion.button>
               )}
 
               <button className="btn-primary w-full py-4 font-nunito font-black" onClick={handleClose}>Terminer</button>

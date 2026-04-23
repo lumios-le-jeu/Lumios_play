@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { QrCode, MapPin, Search, Trophy, Sparkles, Navigation, Loader2, Gamepad2, ExternalLink } from 'lucide-react';
+import { QrCode, MapPin, Search, Trophy, Sparkles, Navigation, Loader2, Gamepad2, ExternalLink, Users } from 'lucide-react';
 import type { ChildProfile } from '../../lib/types';
 import { getRankDisplayName } from '../../lib/ranking';
 import { getTierConfig } from '../../lib/types';
 import FriendDuelModal from './FriendDuelModal';
+import FamilyDuelModal from './FamilyDuelModal';
 import CreateArenaModal from './CreateArenaModal';
 import FindGameModal from './FindGameModal';
 import JoinCompModal from './JoinCompModal';
@@ -22,6 +23,15 @@ const MODES = [
     color: 'lumios-blue' as const,
     gradient: 'from-blue-500 to-blue-400',
     badge: 'En personne',
+  },
+  {
+    id: 'family',
+    title: 'Défi Famille 👨‍👩‍👧',
+    desc: 'Jouez ensemble sur 1 téléphone',
+    Icon: Users,
+    color: 'lumios-green' as const,
+    gradient: 'from-emerald-500 to-teal-400',
+    badge: '1 téléphone',
   },
   {
     id: 'competition',
@@ -43,7 +53,7 @@ const MODES = [
   },
 ];
 
-type ModalType = 'duel' | 'arena' | 'find' | 'competition' | 'comp-join' | null;
+type ModalType = 'duel' | 'family' | 'arena' | 'find' | 'competition' | 'comp-join' | null;
 
 interface PlayScreenProps {
   profile: ChildProfile;
@@ -169,7 +179,7 @@ export default function PlayScreen({ profile, onRefreshProfile, isGuest }: PlayS
         </a>
 
         <div className="flex flex-col items-center gap-1 opacity-50">
-          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Lumios Play v.0.2</p>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Lumios Play v1.1.0</p>
           <button
             onClick={() => window.location.reload()}
             className="text-[9px] font-black text-primary bg-primary/10 px-2 py-1 rounded-full uppercase tracking-tighter hover:bg-primary/20 transition-colors"
@@ -181,6 +191,7 @@ export default function PlayScreen({ profile, onRefreshProfile, isGuest }: PlayS
 
       <AnimatePresence>
         {activeModal === 'duel'        && <FriendDuelModal profile={profile} onRefreshProfile={onRefreshProfile} onClose={() => setActiveModal(null)} />}
+        {activeModal === 'family'      && <FamilyDuelModal profile={profile} onRefreshProfile={onRefreshProfile} onClose={() => setActiveModal(null)} />}
         {activeModal === 'arena'       && <CreateArenaModal profile={profile} onClose={() => setActiveModal(null)} />}
         {activeModal === 'find'        && <FindGameModal profile={profile} onClose={() => setActiveModal(null)} />}
         {activeModal === 'competition' && <CompetitionFlow onClose={() => setActiveModal(null)} />}

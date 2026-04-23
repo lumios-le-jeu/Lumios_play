@@ -161,6 +161,9 @@ export interface Friend {
   status: 'pending' | 'accepted' | 'blocked';
   rankTier: RankTier;
   rankStep: number;
+  matchCount?: number;
+  isFamily?: boolean;
+  relation?: string;
 }
 
 export interface Badge {

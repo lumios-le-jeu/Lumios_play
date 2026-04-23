@@ -355,6 +355,9 @@ export default function AuthScreen({ initialView, guestTransferProfile, onAuthCo
             <p className="text-xs text-muted-foreground text-center px-4">
               Rejoignez sans compte ou créez un profil pour sauvegarder votre progression.
             </p>
+            <p className="text-[10px] text-muted-foreground/50 text-center font-mono">
+              v1.1.0
+            </p>
           </motion.div>
         )}
 

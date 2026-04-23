@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import AuthScreen from './components/auth/AuthScreen';
 import ProfileSelector from './components/auth/ProfileSelector';
@@ -10,6 +10,7 @@ import LeaderboardScreen from './components/leaderboard/LeaderboardScreen';
 import ProfileScreen from './components/profile/ProfileScreen';
 import type { ChildProfile, ParentAccount, GuestProfile } from './lib/types';
 import { getProfilesForParent } from './lib/api';
+import { supabase } from './lib/supabase';
 import { Loader2 } from 'lucide-react';
 
 export type AppScreen = 'play' | 'friends' | 'leaderboard' | 'profile';
@@ -22,7 +23,59 @@ export default function App() {
   const [profiles, setProfiles] = useState<ChildProfile[]>([]);
   const [currentProfile, setCurrentProfile] = useState<ChildProfile | null>(null);
   const [guestProfile, setGuestProfile] = useState<GuestProfile | null>(null);
-  const [isFetching, setIsFetching] = useState(false);
+  const [isFetching, setIsFetching] = useState(true); // true au départ = on vérifie la session
+
+  // ── #8 : Restaurer la session Supabase au démarrage ──────────────────────
+  useEffect(() => {
+    const restoreSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) { setIsFetching(false); return; }
+
+        // Session active : récupérer le compte parent
+        const { data: parentData } = await supabase
+          .from('parent_accounts')
+          .select('*')
+          .eq('auth_id', session.user.id)
+          .single();
+
+        if (!parentData) { setIsFetching(false); return; }
+
+        const restoredParent: ParentAccount = {
+          id: parentData.id,
+          name: parentData.name,
+          email: parentData.email,
+          accountType: parentData.account_type || 'family',
+        };
+        setParent(restoredParent);
+
+        // Récupérer les profils
+        const { data: profileList } = await getProfilesForParent(restoredParent.id);
+        setProfiles(profileList);
+
+        // Restaurer le profil actif depuis localStorage
+        const savedProfileId = localStorage.getItem('lumios_profile_id');
+        if (savedProfileId && restoredParent.accountType === 'individual') {
+          const saved = profileList.find(p => p.id === savedProfileId);
+          if (saved) { setCurrentProfile(saved); setAuthState('app'); setIsFetching(false); return; }
+        }
+
+        // Compte individuel → aller direct à l'app avec le premier profil
+        if (restoredParent.accountType === 'individual' && profileList.length > 0) {
+          setCurrentProfile(profileList[0]);
+          localStorage.setItem('lumios_profile_id', profileList[0].id);
+          setAuthState('app');
+        } else if (profileList.length > 0) {
+          // Compte famille → page de sélection de profil
+          setAuthState('profile-select');
+        }
+      } catch (e) {
+        console.error('Session restore error', e);
+      }
+      setIsFetching(false);
+    };
+    restoreSession();
+  }, []);
 
   const handleAuthComplete = async (p: ParentAccount, fallbackPseudo?: string) => {
     setParent(p);
@@ -62,6 +115,7 @@ export default function App() {
         accountType: 'individual',
       };
       setCurrentProfile(activeProfile as ChildProfile);
+      localStorage.setItem('lumios_profile_id', activeProfile.id);
       setAuthState('app');
     } else {
       setAuthState('profile-select');
@@ -92,17 +146,25 @@ export default function App() {
 
   const handleProfileSelect = (profile: ChildProfile) => {
     setCurrentProfile(profile);
+    localStorage.setItem('lumios_profile_id', profile.id);
     setAuthState('app');
   };
 
+  // #2 — Met à jour un profil existant OU en ajoute un nouveau
   const handleAddProfile = (profile: ChildProfile) => {
-    setProfiles(prev => [...prev, profile]);
+    setProfiles(prev =>
+      prev.some(p => p.id === profile.id)
+        ? prev.map(p => p.id === profile.id ? profile : p)
+        : [...prev, profile]
+    );
   };
 
   const handleLogout = () => {
     setCurrentProfile(null);
     setParent(null);
     setGuestProfile(null);
+    localStorage.removeItem('lumios_profile_id');
+    supabase.auth.signOut();
     setAuthState('landing');
   };
 
@@ -147,6 +209,16 @@ export default function App() {
   const transition: any = { duration: 0.22, ease: [0.4, 0, 0.2, 1] };
 
   // ── AUTH FLOW ─────────────────────────────────────────────────────────────
+  // Écran de chargement pendant la restauration de session
+  if (isFetching) {
+    return (
+      <div className="min-h-dvh gradient-background flex flex-col items-center justify-center text-primary">
+        <Loader2 className="w-10 h-10 animate-spin mb-4" />
+        <p className="font-nunito font-bold">Chargement…</p>
+      </div>
+    );
+  }
+
   if (authState === 'landing') {
     return (
       <AuthScreen
