@@ -110,6 +110,16 @@ export default function PlayScreen({ profile, onRefreshProfile, isGuest }: PlayS
     };
   }, []);
 
+  // ── Filtrage des modes selon le type de compte ──────────────────────────────
+  // Invité   : uniquement "Défi entre Amis"
+  // Individuel : tout sauf "Défi Famille" (réservé aux comptes famille)
+  // Famille  : tous les modes
+  const visibleModes = MODES.filter(mode => {
+    if (isGuest) return mode.id === 'duel';
+    if (profile.accountType === 'individual') return mode.id !== 'family';
+    return true; // famille
+  });
+
   return (
     <div className="screen-wrapper">
       {/* Header */}
@@ -131,7 +141,7 @@ export default function PlayScreen({ profile, onRefreshProfile, isGuest }: PlayS
 
       {/* MODES */}
       <div className="grid grid-cols-2 gap-3 mb-7">
-        {MODES.map((mode, i) => (
+        {visibleModes.map((mode, i) => (
           <motion.button 
             key={mode.id} 
             initial={{ opacity: 0, y: 20 }} 
@@ -139,10 +149,6 @@ export default function PlayScreen({ profile, onRefreshProfile, isGuest }: PlayS
             transition={{ delay: i * 0.07 }} 
             whileTap={{ scale: 0.95 }} 
             onClick={() => {
-              if (isGuest && (mode.id === 'competition' || mode.id === 'comp-join')) {
-                setShowGuestConversion(true);
-                return;
-              }
               setActiveModal(mode.id as ModalType);
             }} 
             className="relative flex flex-col items-start p-4 card-lumios card-lumios-hover overflow-hidden text-left"

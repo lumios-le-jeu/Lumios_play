@@ -16,7 +16,7 @@ interface FriendDuelModalProps {
   onClose: () => void;
 }
 
-type DuelStep = 'setup' | 'qr-host' | 'scanning' | 'joining' | 'matched' | 'playing' | 'score-entry' | 'comments' | 'result';
+type DuelStep = 'setup' | 'qr-host' | 'scanning' | 'joining' | 'matched' | 'playing' | 'score-entry' | 'result';
 
 export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: FriendDuelModalProps) {
   const [step, setStep] = useState<DuelStep>('setup');
@@ -37,9 +37,7 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
   const [selectedScore, setSelectedScore] = useState<ScoreDetail | null>(null);
   const [winnerId, setWinnerId] = useState<string | null>(null);
 
-  // Comments & Media
-  const [commentWinner, setCommentWinner] = useState('');
-  const [commentLoser, setCommentLoser] = useState('');
+  // Media (photo souvenir — pas de commentaires)
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
 
@@ -261,8 +259,11 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
       mediaUrl = await uploadMatchMedia(mediaFile, `${Date.now()}`);
     }
 
+    // A3 : XP calculé correctement pour le joueur local (transfert vers compte réel)
+    const myNewSeasonXp = profile.seasonXp + playerResult.xpChange;
+    const myNewWinStreak = won ? profile.winStreak + 1 : 0;
+
     // ✅ Envoyer le vote au serveur — pas d'écriture directe en DB
-    // Le serveur valide uniquement si les deux joueurs indiquent le même vainqueur
     const scoreStr = selectedScore.replace('-', ' - ');
     getSocket().emit('submit-score', {
       lobbyId: gameCode,
@@ -272,7 +273,6 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
       scoreDetail: selectedScore,
       matchMode,
       isHost,
-      // P1 = hôte, P2 = scanner
       p1Id: isHost ? profile.id : opponent.id,
       p2Id: isHost ? opponent.id : profile.id,
       stepChangeP1: isHost ? playerResult.stepChange : oppResult.stepChange,
@@ -284,11 +284,10 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
       newTierP1: isHost ? playerResult.newTier : oppResult.newTier,
       newRankStepP2: isHost ? oppResult.newRankStep : playerResult.newRankStep,
       newTierP2: isHost ? oppResult.newTier : playerResult.newTier,
-      seasonXpP1New: isHost ? profile.seasonXp + playerResult.xpChange : opponent.elo,
-      seasonXpP2New: isHost ? opponent.elo : profile.seasonXp + playerResult.xpChange,
-      winStreakP1New: isHost ? (won ? profile.winStreak + 1 : 0) : (won ? 0 : opponent.rankStep),
-      commentWinner: won ? commentWinner : commentLoser,
-      commentLoser: won ? commentLoser : commentWinner,
+      seasonXpP1New: isHost ? myNewSeasonXp : 0,
+      seasonXpP2New: isHost ? 0 : myNewSeasonXp,
+      winStreakP1New: isHost ? myNewWinStreak : 0,
+      winStreakP2New: isHost ? 0 : myNewWinStreak,
       mediaUrl: mediaUrl || null,
     });
 
@@ -558,132 +557,48 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
                 })}
               </div>
 
+              {/* Photo souvenir optionnelle */}
               {selectedScore && (
-                <motion.button
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="btn-primary w-full py-4"
-                  onClick={() => setStep('comments')}
-                >
-                  Continuer <ChevronRight className="w-5 h-5 inline" />
-                </motion.button>
-              )}
-            </motion.div>
-          )}
-
-          {/* ── COMMENTS & MEDIA ── */}
-          {step === 'comments' && opponent && (
-            <motion.div key="comments" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col gap-4 py-2">
-              <div className="text-center mb-2">
-                <h4 className="font-nunito font-black text-xl mb-1">Un mot sur le match ?</h4>
-                <p className="text-xs text-muted-foreground">Optionnel — ajoutez un commentaire ou un souvenir</p>
-              </div>
-
-              {/* Winner comment */}
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1 block">
-                  💬 Commentaire du gagnant
-                </label>
-                <textarea
-                  className="input-lumios min-h-[60px] resize-none"
-                  placeholder="Belle partie !"
-                  maxLength={200}
-                  value={commentWinner}
-                  onChange={e => setCommentWinner(e.target.value)}
-                />
-              </div>
-
-              {/* Loser comment */}
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1 block">
-                  💬 Commentaire du perdant
-                </label>
-                <textarea
-                  className="input-lumios min-h-[60px] resize-none"
-                  placeholder="Revanche !"
-                  maxLength={200}
-                  value={commentLoser}
-                  onChange={e => setCommentLoser(e.target.value)}
-                />
-              </div>
-
-              {/* Photo/video souvenir */}
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 block">
-                  📸 Photo / Vidéo souvenir
-                </label>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*,video/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={handleMediaSelect}
-                />
-                {mediaPreview ? (
-                  <div className="relative">
-                    <img src={mediaPreview} alt="Souvenir" className="w-full h-32 object-cover rounded-xl" />
-                    <button
-                      onClick={() => { setMediaFile(null); setMediaPreview(null); }}
-                      className="absolute top-2 right-2 w-6 h-6 bg-black/50 rounded-full flex items-center justify-center text-white"
-                    >
-                      <X className="w-3 h-3" />
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 block">
+                    📸 Photo souvenir (optionnel)
+                  </label>
+                  <input ref={fileInputRef} type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={handleMediaSelect} />
+                  {mediaPreview ? (
+                    <div className="relative">
+                      <img src={mediaPreview} alt="Souvenir" className="w-full h-24 object-cover rounded-xl" />
+                      <button onClick={() => { setMediaFile(null); setMediaPreview(null); }} className="absolute top-2 right-2 w-6 h-6 bg-black/50 rounded-full flex items-center justify-center text-white">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => fileInputRef.current?.click()} className="w-full p-3 rounded-xl border-2 border-dashed border-border flex items-center justify-center gap-2 text-muted-foreground hover:border-primary hover:text-primary transition-all">
+                      <Camera className="w-4 h-4" />
+                      <span className="text-sm font-semibold">Ajouter une photo</span>
                     </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full p-4 rounded-xl border-2 border-dashed border-border flex items-center justify-center gap-2 text-muted-foreground hover:border-primary hover:text-primary transition-all"
-                  >
-                    <Camera className="w-5 h-5" />
-                    <span className="text-sm font-semibold">Ajouter une photo</span>
-                  </button>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
 
-              {/* ─ Boutons Valider / Retour ─ */}
+              {/* Validation / Attente */}
               {hasVoted ? (
-                /* Waiting — l'autre joueur n'a pas encore validé */
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex flex-col items-center gap-4 p-5 bg-muted rounded-2xl"
-                >
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center gap-4 p-5 bg-muted rounded-2xl">
                   <Loader2 className="w-8 h-8 animate-spin text-primary" />
                   <div className="text-center">
-                    <p className="font-nunito font-black text-base">Ton score est envoyé ✅</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      En attente que <strong>{opponent?.pseudo}</strong> valide aussi son score…
-                    </p>
+                    <p className="font-nunito font-black text-base">Score envoyé ✅</p>
+                    <p className="text-sm text-muted-foreground mt-1">En attente que <strong>{opponent?.pseudo}</strong> valide…</p>
                   </div>
                   {mismatchError && (
                     <div className="w-full p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-600 text-xs font-bold text-center">
-                      ⚠️ {mismatchError}
-                      <br />
-                      <button
-                        className="mt-2 underline text-rose-500 font-bold"
-                        onClick={() => { setHasVoted(false); setMismatchError(null); setSelectedScore(null); setWinnerId(null); setStep('score-entry'); }}
-                      >
-                        Modifier le score
-                      </button>
+                      ⚠️ {mismatchError}<br />
+                      <button className="mt-2 underline" onClick={() => { setHasVoted(false); setMismatchError(null); setSelectedScore(null); setWinnerId(null); }}>Modifier</button>
                     </div>
                   )}
                 </motion.div>
-              ) : (
-                <div className="flex gap-3 mt-2">
-                  <button className="btn-glass flex-1 py-3.5" onClick={() => setStep('score-entry')}>
-                    Retour
-                  </button>
-                  <button
-                    className="btn-primary flex-1 py-3.5"
-                    onClick={handleSubmitResult}
-                    disabled={isProcessing}
-                  >
-                    {isProcessing ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (
-                      <><Check className="w-5 h-5" /> Valider</>
-                    )}
-                  </button>
-                </div>
+              ) : selectedScore && (
+                <motion.button initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="btn-primary w-full py-4" onClick={handleSubmitResult} disabled={isProcessing}>
+                  {isProcessing ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : <><Check className="w-5 h-5" /> Valider le score</>}
+                </motion.button>
               )}
             </motion.div>
           )}

@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Bell, Shield, Settings, LogOut, Sparkles, ChevronRight, RotateCcw, X, QrCode, Star, Flame, Users, Search, Check, Loader2 } from 'lucide-react';
+import { User, Bell, Shield, Settings, LogOut, Sparkles, ChevronRight, RotateCcw, X, QrCode, Star, Flame, Users, Search, Check, Loader2, Scan, Home } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { ChildProfile, ParentAccount } from '../../lib/types';
 import { getTierConfig } from '../../lib/types';
@@ -26,14 +26,17 @@ const MENU_ITEMS = [
 export default function ProfileScreen({ profile, parentAccount, familyProfiles = [], onSelectProfile, onLogout, onSwitchProfile }: ProfileScreenProps) {
   const [showComingSoon, setShowComingSoon] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const [showFamilyQR, setShowFamilyQR] = useState(false); // C1 — QR code famille
   // #15 — Liaison famille
   const [showFamilyLink, setShowFamilyLink] = useState(false);
+  const [showFamilyScanner, setShowFamilyScanner] = useState(false); // B4 — Scanner QR famille
   const [familySearch, setFamilySearch] = useState('');
   const [familyResults, setFamilyResults] = useState<any[]>([]);
   const [familySearching, setFamilySearching] = useState(false);
   const [familyRequestSent, setFamilyRequestSent] = useState<string | null>(null);
   const [pendingLinks, setPendingLinks] = useState<any[]>([]);
   const [linkLoading, setLinkLoading] = useState(false);
+  const familyScannerRef = useRef<any>(null);
 
   const isIndividual = profile.accountType === 'individual';
   const isFamilyAdmin = profile.accountType === 'family' && parentAccount?.id === profile.parentId;
@@ -56,6 +59,46 @@ export default function ProfileScreen({ profile, parentAccount, familyProfiles =
     }, 500);
     return () => clearTimeout(t);
   }, [familySearch]);
+
+  // B4 — Scanner QR famille
+  useEffect(() => {
+    if (!showFamilyScanner) return;
+    let html5QrCode: any = null;
+    const startScanner = async () => {
+      try {
+        const { Html5Qrcode } = await import('html5-qrcode');
+        const el = document.getElementById('family-qr-scanner-div');
+        if (!el) return;
+        html5QrCode = new Html5Qrcode('family-qr-scanner-div');
+        await html5QrCode.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 220, height: 220 } },
+          async (decodedText: string) => {
+            await html5QrCode.stop().catch(() => {});
+            setShowFamilyScanner(false);
+            try {
+              const data = JSON.parse(decodedText);
+              if (data.type === 'join-family' && data.parentId) {
+                await handleRequestLink(data.parentId);
+                alert(`Demande envoyée à la famille ${data.familyName || ''} !`);
+              } else {
+                alert('Ce QR Code n\'est pas un QR famille Lumios.');
+              }
+            } catch { alert('Format de QR Code invalide.'); }
+          }
+        );
+        familyScannerRef.current = html5QrCode;
+      } catch (err: any) {
+        if (err?.toString().includes('NotAllowedError')) alert('Accès caméra refusé.');
+      }
+    };
+    const timer = setTimeout(startScanner, 200);
+    return () => {
+      clearTimeout(timer);
+      if (familyScannerRef.current?.isScanning) familyScannerRef.current.stop().catch(() => {});
+      familyScannerRef.current = null;
+    };
+  }, [showFamilyScanner]);
 
   const handleRequestLink = async (familyParentId: string) => {
     setLinkLoading(true);
@@ -105,6 +148,13 @@ export default function ProfileScreen({ profile, parentAccount, familyProfiles =
             {profile.avatarEmoji || <User className="w-10 h-10 text-white" />}
           </motion.div>
           <h1 className="font-nunito font-black text-2xl mb-1">{profile.pseudo}</h1>
+          {/* C1 — Nom de la famille affiché clairement */}
+          {profile.accountType === 'family' && parentAccount?.name && (
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <Home className="w-3.5 h-3.5 text-primary" />
+              <span className="text-sm font-bold text-primary">Famille {parentAccount.name}</span>
+            </div>
+          )}
 
           {/* Rank display */}
           <div className="flex items-center justify-center gap-2 mb-3">
@@ -166,16 +216,8 @@ export default function ProfileScreen({ profile, parentAccount, familyProfiles =
       </motion.div>
 
       {/* QR Code for friends */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.08 }}
-      >
-        <motion.button
-          whileTap={{ scale: 0.98 }}
-          onClick={() => setShowQR(true)}
-          className="card-lumios p-4 mb-5 flex items-center gap-3 w-full text-left card-lumios-hover"
-        >
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
+        <motion.button whileTap={{ scale: 0.98 }} onClick={() => setShowQR(true)} className="card-lumios p-4 mb-3 flex items-center gap-3 w-full text-left card-lumios-hover">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center gradient-lumios">
             <QrCode className="w-5 h-5 text-white" />
           </div>
@@ -186,6 +228,22 @@ export default function ProfileScreen({ profile, parentAccount, familyProfiles =
           <ChevronRight className="w-4 h-4 text-muted-foreground" />
         </motion.button>
       </motion.div>
+
+      {/* C1 — QR Code Famille (compte famille uniquement) — accès facile */}
+      {profile.accountType === 'family' && parentAccount && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.09 }}>
+          <motion.button whileTap={{ scale: 0.98 }} onClick={() => setShowFamilyQR(true)} className="card-lumios p-4 mb-5 flex items-center gap-3 w-full text-left card-lumios-hover border-2" style={{ borderColor: 'hsl(var(--lumios-green)/0.3)' }}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'hsl(var(--lumios-green)/0.12)' }}>
+              <Users className="w-5 h-5" style={{ color: 'hsl(var(--lumios-green))' }} />
+            </div>
+            <div className="flex-1">
+              <p className="font-nunito font-black text-sm">QR Code de ma Famille</p>
+              <p className="text-xs text-muted-foreground">Partagez pour rejoindre {parentAccount.name}</p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          </motion.button>
+        </motion.div>
+      )}
 
       {/* #15 — Rattachement famille (compte individuel) */}
       {isIndividual && (
@@ -342,6 +400,46 @@ export default function ProfileScreen({ profile, parentAccount, familyProfiles =
         )}
       </AnimatePresence>
 
+      {/* C1 — Modal QR Code Famille */}
+      <AnimatePresence>
+        {showFamilyQR && parentAccount && (
+          <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowFamilyQR(false)}>
+            <motion.div className="modal-sheet text-center" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="font-nunito font-black text-lg">QR Code — {parentAccount.name}</h3>
+                <button onClick={() => setShowFamilyQR(false)} className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="p-5 bg-white rounded-3xl shadow-card border border-border inline-block mb-4">
+                <QRCodeSVG value={JSON.stringify({ type: 'join-family', parentId: parentAccount.id, familyName: parentAccount.name })} size={200} fgColor="hsl(217, 85%, 30%)" level="M" />
+              </div>
+              <p className="text-sm font-bold mb-1">Famille {parentAccount.name}</p>
+              <p className="text-xs text-muted-foreground mb-6">Partagez ce QR Code pour permettre à un joueur individuel de rejoindre votre famille</p>
+              <button className="btn-primary w-full py-4" onClick={() => setShowFamilyQR(false)}>Fermer</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* B4 — Modal Scanner QR famille */}
+      <AnimatePresence>
+        {showFamilyScanner && (
+          <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowFamilyScanner(false)}>
+            <motion.div className="modal-sheet text-center" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-nunito font-black text-lg">Scanner QR Famille</h3>
+                <button onClick={() => setShowFamilyScanner(false)} className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center"><X className="w-4 h-4" /></button>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">Scannez le QR Code de la famille depuis le profil du responsable.</p>
+              <div className="rounded-3xl overflow-hidden mb-6 relative aspect-square bg-black">
+                <div id="family-qr-scanner-div" className="w-full h-full" />
+                <div className="absolute inset-0 border-[6px] border-primary/20 pointer-events-none rounded-3xl" />
+              </div>
+              <button className="btn-glass w-full py-3 text-sm text-muted-foreground" onClick={() => setShowFamilyScanner(false)}>Annuler</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Coming Soon Modal */}
       <AnimatePresence>
         {showComingSoon && (
@@ -386,8 +484,26 @@ export default function ProfileScreen({ profile, parentAccount, familyProfiles =
                 </button>
               </div>
               <p className="text-sm text-muted-foreground mb-4">
-                Recherchez la famille par son nom. Le responsable devra accepter votre demande.
+                Recherchez la famille par son nom ou scannez son QR Code.
               </p>
+
+              {/* B4 — Scanner QR famille */}
+              <motion.button whileTap={{ scale: 0.97 }} onClick={() => setShowFamilyScanner(true)} className="w-full flex items-center gap-3 p-3.5 mb-4 rounded-2xl border-2 border-dashed" style={{ borderColor: 'hsl(var(--lumios-green)/0.4)', color: 'hsl(var(--lumios-green))' }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'hsl(var(--lumios-green)/0.10)' }}>
+                  <Scan className="w-5 h-5" />
+                </div>
+                <div className="text-left">
+                  <p className="font-nunito font-black text-sm">Scanner le QR d'une famille</p>
+                  <p className="text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>Rapide et sans recherche</p>
+                </div>
+              </motion.button>
+
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex-1 h-px bg-border" />
+                <span className="text-xs text-muted-foreground font-semibold">ou</span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+
               <div className="relative mb-4">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input

@@ -30,7 +30,44 @@ export default function App() {
     const restoreSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) { setIsFetching(false); return; }
+        if (!session?.user) {
+          // ── A2 : Restaurer session invité depuis sessionStorage ──────────
+          const guestRaw = sessionStorage.getItem('lumios_guest');
+          if (guestRaw) {
+            try {
+              const guest = JSON.parse(guestRaw);
+              const restoredGuest: GuestProfile = {
+                tempId: guest.tempId || `guest-${Date.now()}`,
+                pseudo: guest.pseudo,
+                avatarEmoji: guest.avatarEmoji,
+                isGuest: true,
+              };
+              setGuestProfile(restoredGuest);
+              setCurrentProfile({
+                id: restoredGuest.tempId,
+                parentId: '',
+                pseudo: restoredGuest.pseudo,
+                avatarEmoji: restoredGuest.avatarEmoji,
+                ageRange: '18+',
+                hasLumios: false,
+                elo: 800,
+                city: 'Invité',
+                createdAt: new Date().toISOString(),
+                // Restaurer les stats accumulées pendant la session
+                rankTier: (guest as any).rankTier || 'bronze',
+                rankStep: (guest as any).rankStep || 0,
+                seasonXp: (guest as any).seasonXp || 0,
+                winStreak: (guest as any).winStreak || 0,
+                accountType: 'individual',
+              });
+              setAuthState('guest');
+            } catch (e) {
+              console.error('Guest session restore error', e);
+            }
+          }
+          setIsFetching(false);
+          return;
+        }
 
         // Session active : récupérer le compte parent
         const { data: parentData } = await supabase
@@ -76,6 +113,7 @@ export default function App() {
     };
     restoreSession();
   }, []);
+
 
   const handleAuthComplete = async (p: ParentAccount, fallbackPseudo?: string) => {
     setParent(p);

@@ -622,6 +622,94 @@ export async function searchFamilyAccounts(query: string): Promise<{ data: any[]
     .eq('account_type', 'family')
     .ilike('name', `%${query}%`)
     .limit(8);
+
+  // Si pas de résultats par nom, essayer par email
+  if (!error && (!data || data.length === 0) && query.length >= 3) {
+    const { data: byEmail } = await supabase
+      .from('parent_accounts')
+      .select('id, name, email, account_type')
+      .eq('account_type', 'family')
+      .ilike('email', `%${query}%`)
+      .limit(8);
+    return { data: byEmail || [], error: null };
+  }
+
   return { data: data || [], error };
 }
 
+/** Propositions d'amis : joueurs avec qui on a joué mais qui ne sont pas encore amis */
+export async function getSuggestedFriends(profileId: string): Promise<{ data: any[], error: any }> {
+  // 1. Trouver tous les adversaires des matchs joués
+  const { data: matchData, error: matchError } = await supabase
+    .from('matches')
+    .select('player1_id, player2_id')
+    .or(`player1_id.eq.${profileId},player2_id.eq.${profileId}`)
+    .limit(50);
+
+  if (matchError || !matchData) return { data: [], error: matchError };
+
+  // 2. Extraire les IDs adversaires uniques
+  const opponentIds = [...new Set(
+    matchData.flatMap(m => [m.player1_id, m.player2_id]).filter(id => id !== profileId)
+  )];
+  if (opponentIds.length === 0) return { data: [], error: null };
+
+  // 3. Récupérer les amis actuels (acceptés + pending envoyés)
+  const { data: friendsData } = await supabase
+    .from('friends')
+    .select('friend_id, profile_id')
+    .or(`profile_id.eq.${profileId},friend_id.eq.${profileId}`);
+
+  const existingFriendIds = new Set<string>();
+  (friendsData || []).forEach((f: any) => {
+    existingFriendIds.add(f.friend_id);
+    existingFriendIds.add(f.profile_id);
+  });
+  existingFriendIds.delete(profileId);
+
+  // 4. Filtrer pour ne garder que les non-amis
+  const newOpponentIds = opponentIds.filter(id => !existingFriendIds.has(id));
+  if (newOpponentIds.length === 0) return { data: [], error: null };
+
+  // 5. Récupérer les profils
+  const { data: profiles, error: profileError } = await supabase
+    .from('profiles')
+    .select('id, pseudo, avatar_emoji, rank_tier, rank_step, season_xp, has_lumios')
+    .in('id', newOpponentIds)
+    .limit(10);
+
+  if (profileError) return { data: [], error: profileError };
+  return { data: profiles || [], error: null };
+}
+
+/** Demandes d'amis envoyées en attente (on attend la réponse de l'autre) */
+export async function getSentPendingRequests(profileId: string): Promise<{ data: any[], error: any }> {
+  // 1. Trouver les IDs des joueurs à qui on a envoyé une demande en attente
+  const { data: sentRows, error } = await supabase
+    .from('friends')
+    .select('friend_id')
+    .eq('profile_id', profileId)
+    .eq('status', 'pending');
+
+  if (error || !sentRows || sentRows.length === 0) return { data: [], error };
+
+  const friendIds = sentRows.map((r: any) => r.friend_id);
+
+  // 2. Récupérer les profils correspondants
+  const { data: profiles, error: profileError } = await supabase
+    .from('profiles')
+    .select('id, pseudo, avatar_emoji, rank_tier, rank_step')
+    .in('id', friendIds);
+
+  if (profileError) return { data: [], error: profileError };
+
+  const mapped = (profiles || []).map((p: any) => ({
+    id: p.id,
+    pseudo: p.pseudo,
+    avatarEmoji: p.avatar_emoji,
+    rankTier: p.rank_tier || 'bronze',
+    rankStep: p.rank_step ?? 0,
+  }));
+
+  return { data: mapped, error: null };
+}

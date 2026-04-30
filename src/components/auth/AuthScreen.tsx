@@ -115,8 +115,12 @@ export default function AuthScreen({ initialView, guestTransferProfile, onAuthCo
     if (signupStep === infoStep) {
       if (!createdParentData || createdParentData.email !== email) {
         setIsLoading(true);
-        const fullName = `${parentFirstName.trim()} ${parentLastName.trim()}`;
-        const { data: parentData, error: parentErr } = await createParentAccount(email, fullName, accountType, password);
+        // Pour les familles : stocker le nom de la famille (permet la recherche)
+        // Pour les comptes individuels : stocker le nom complet du joueur
+        const accountName = accountType === 'family'
+          ? (familyName.trim() || `${parentFirstName.trim()} ${parentLastName.trim()}`)
+          : `${parentFirstName.trim()} ${parentLastName.trim()}`;
+        const { data: parentData, error: parentErr } = await createParentAccount(email, accountName, accountType, password);
         setIsLoading(false);
         if (parentErr || !parentData) {
           const errorMsg = parentErr?.message?.toLowerCase().includes('already registered') 
