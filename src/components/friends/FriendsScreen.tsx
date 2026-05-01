@@ -4,7 +4,7 @@ import { Search, UserPlus, QrCode, Swords, Loader2, Check, X, Crown, TrendingUp,
 import type { ChildProfile, Friend } from '../../lib/types';
 import { getTierConfig } from '../../lib/types';
 import { getRankDisplayName } from '../../lib/ranking';
-import { getFriends, searchProfiles, addFriend, getPendingFriendRequests, acceptFriendRequest, declineFriendRequest, getSuggestedFriends, getSentPendingRequests } from '../../lib/api';
+import { getFriends, searchProfiles, addFriend, getPendingFriendRequests, acceptFriendRequest, declineFriendRequest, getSuggestedFriends, getSentPendingRequests, searchFamilyAccounts, requestFamilyLink } from '../../lib/api';
 import FriendDuelModal from '../play/FriendDuelModal';
 
 interface FriendsScreenProps {
@@ -27,6 +27,8 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
   const [isAdding, setIsAdding] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const [showDuelModal, setShowDuelModal] = useState(false);
+  const [familyResults, setFamilyResults] = useState<any[]>([]);
+  const [familyLinkSent, setFamilyLinkSent] = useState<string | null>(null);
 
   // ── Scanner QR Code d'ajout d'ami ──
   useEffect(() => {
@@ -55,8 +57,16 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
                   } else {
                     alert('Vous ne pouvez pas vous ajouter vous-même !');
                   }
+                } else if (data.type === 'add-family-member' && data.parentId) {
+                  // QR Code famille : envoyer une demande de rattachement
+                  const ok = await requestFamilyLink(profile.id, data.parentId);
+                  if (ok) {
+                    alert(`Demande de rejoindre la famille "${data.parentName || ''}" envoyée ! Le responsable doit l'accepter.`);
+                  } else {
+                    alert('Erreur lors de la demande de rattachement.');
+                  }
                 } else {
-                  alert('Ce QR Code n\'est pas un profil Lumios Play.');
+                  alert('Ce QR Code n\'est pas reconnu par Lumios Play.');
                 }
               } catch (err) {
                 alert('Format de QR Code invalide.');
@@ -77,6 +87,17 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
       if (html5QrCode?.isScanning) html5QrCode.stop().catch(() => {});
     };
   }, [showScanner, profile.id]);
+
+  // Helper : envoyer une demande de rattachement famille
+  const handleFamilyLinkRequest = async (familyParentId: string, familyName: string) => {
+    const ok = await requestFamilyLink(profile.id, familyParentId);
+    if (ok) {
+      setFamilyLinkSent(familyParentId);
+      alert(`Demande envoyée à la famille ${familyName} !`);
+    } else {
+      alert('Erreur lors de l\'envoi de la demande.');
+    }
+  };
 
   const loadFriends = async () => {
     const [{ data: friends }, { data: pending }, { data: sent }, { data: suggestions }] = await Promise.all([
@@ -124,16 +145,22 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
   };
 
   useEffect(() => {
-    if (search.length < 2) { setGlobalResults([]); return; }
+    if (search.length < 2) { setGlobalResults([]); setFamilyResults([]); return; }
     const timer = setTimeout(async () => {
       setIsSearching(true);
+      // Recherche joueurs
       const { data } = await searchProfiles(search, profile.id);
       const filtered = (data || []).filter((u: any) => !friendsList.find(f => f.id === u.id));
       setGlobalResults(filtered);
+      // Recherche familles (pour compte individuel souhaitant rejoindre une famille)
+      if (profile.accountType === 'individual') {
+        const { data: families } = await searchFamilyAccounts(search);
+        setFamilyResults(families || []);
+      }
       setIsSearching(false);
     }, 500);
     return () => clearTimeout(timer);
-  }, [search, profile.id, friendsList]);
+  }, [search, profile.id, friendsList, profile.accountType]);
 
   const filteredFriends = friendsList.filter(f =>
     f.pseudo.toLowerCase().includes(search.toLowerCase())
@@ -289,7 +316,7 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
               <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3 px-1">Autres joueurs</h3>
               {isSearching ? (
                 <div className="flex justify-center p-4"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
-              ) : globalResults.length === 0 ? (
+              ) : globalResults.length === 0 && familyResults.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center p-4 italic">Aucun utilisateur trouvé</p>
               ) : (
                 <div className="flex flex-col gap-2">
@@ -320,6 +347,30 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
                 </div>
               )}
             </div>
+            {/* Résultats familles — pour les comptes individuels */}
+            {familyResults.length > 0 && (
+              <div className="mt-4">
+                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3 px-1">🏡 Familles</h3>
+                <div className="flex flex-col gap-2">
+                  {familyResults.map((fam: any) => (
+                    <div key={fam.id} className="w-full flex items-center gap-3 p-3 card-lumios bg-emerald-50/30 border-emerald-200/40">
+                      <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center text-xl flex-shrink-0">🏠</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-nunito font-bold text-sm">{fam.name}</p>
+                        <p className="text-[10px] text-muted-foreground">Compte famille</p>
+                      </div>
+                      <button
+                        onClick={() => handleFamilyLinkRequest(fam.id, fam.name)}
+                        disabled={familyLinkSent === fam.id}
+                        className={`py-1.5 px-3 text-xs rounded-xl font-nunito font-bold flex items-center gap-1 transition-all ${familyLinkSent === fam.id ? 'bg-muted text-muted-foreground' : 'bg-emerald-100 text-emerald-700 border border-emerald-200 hover:bg-emerald-200'}`}
+                      >
+                        {familyLinkSent === fam.id ? <><Check className="w-3.5 h-3.5" /> Envoyé</> : 'Rejoindre'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         ) : friendsList.length === 0 ? (
           <div className="text-center py-10 text-muted-foreground">

@@ -46,10 +46,10 @@ export default function LeaderboardScreen({ profile, onRefreshProfile }: Leaderb
 
   const fetchLB = useCallback(async () => {
     setIsLoading(true);
-    const { data } = await getGlobalLeaderboard();
+    const { data } = await getGlobalLeaderboard(filter);
     setLeaderboard(data || []);
     setIsLoading(false);
-  }, []);
+  }, [filter]);
 
   useEffect(() => {
     fetchLB();
@@ -323,7 +323,7 @@ export default function LeaderboardScreen({ profile, onRefreshProfile }: Leaderb
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs">{tierCfg.icon}</span>
                           <span className="text-[10px] font-semibold" style={{ color: tierCfg.color }}>{rankName}</span>
-                          <span className="text-[10px] text-muted-foreground">· {player.seasonXp ?? 0} XP</span>
+                          <span className="text-[10px] text-muted-foreground">· {player.seasonXp ?? 0} XP · {player.matchCount ?? 0} matchs</span>
                         </div>
                       </div>
                     </motion.div>

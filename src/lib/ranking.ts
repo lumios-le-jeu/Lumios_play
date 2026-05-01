@@ -129,16 +129,16 @@ export function calculateRankingUpdate(
   winStreak: number = 0,
   isHappyHour: boolean = false,
 ): RankingUpdateResult {
-  // Amical → pas de changement de rang, juste XP réduit
+  // Amical → pas de changement de rang, XP encouragement
   if (matchMode === 'friendly') {
-    const baseXp = won ? 50 : 0;
+    const baseXp = won ? 50 : 15; // 15 XP même en cas de défaite (encouragement)
     const xp = isHappyHour ? baseXp * 2 : baseXp;
     return {
       newRankStep: player.rankStep,
       newTier: player.tier,
       stepChange: 0,
       xpChange: xp,
-      bonuses: matchMode === 'friendly' ? ['Amical'] : [],
+      bonuses: ['Amical'],
     };
   }
 
@@ -239,21 +239,20 @@ export function calculateSeasonXp(
 
     return baseXp;
   } else {
-    // Défaite
+    // Défaite — toujours au moins 10 XP (encouragement)
     const playerInfo = fromGlobalStep(player.rankStep);
 
-    // Pas de malus XP pour Bronze et Argent
-    if (tierIndex(playerInfo.tier) < 2) return 0;
+    // Bronze et Argent : pas de malus, juste 10 XP d'encouragement
+    if (tierIndex(playerInfo.tier) < 2) return 10;
 
-    // Standard: -25 XP
-    let xpLoss = -25;
-
-    // Contre-performance majeure : perdre vs joueur de palier inférieur
+    // Or+ : légère pénalité XP mais plancher à 10 XP
+    let xpNet = 10; // base encouragement
+    // Contre-performance majeure : perdre vs joueur de palier inférieur → moins d'encouragement
     if (diff > 0) {
-      xpLoss = -50;
+      xpNet = 5;
     }
 
-    return xpLoss;
+    return xpNet;
   }
 }
 

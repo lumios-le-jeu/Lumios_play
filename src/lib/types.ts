@@ -161,6 +161,7 @@ export interface Friend {
   status: 'pending' | 'accepted' | 'blocked';
   rankTier: RankTier;
   rankStep: number;
+  seasonXp?: number;
   matchCount?: number;
   isFamily?: boolean;
   relation?: string;

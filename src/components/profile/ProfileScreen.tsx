@@ -78,11 +78,18 @@ export default function ProfileScreen({ profile, parentAccount, familyProfiles =
             setShowFamilyScanner(false);
             try {
               const data = JSON.parse(decodedText);
-              if (data.type === 'join-family' && data.parentId) {
+              // Accepter les deux formats de QR famille :
+              // - 'join-family'       → généré depuis ProfileScreen (QR Code Famille)
+              // - 'add-family-member' → généré depuis ProfileSelector (bouton Lier via QR Code)
+              const isFamilyQR =
+                (data.type === 'join-family' && data.parentId) ||
+                (data.type === 'add-family-member' && data.parentId);
+
+              if (isFamilyQR) {
                 await handleRequestLink(data.parentId);
-                alert(`Demande envoyée à la famille ${data.familyName || ''} !`);
+                alert(`Demande envoyée à la famille ${data.familyName || data.parentName || ''} !`);
               } else {
-                alert('Ce QR Code n\'est pas un QR famille Lumios.');
+                alert('Ce QR Code n\'est pas un QR famille Lumios.\nVérifiez que vous scannez bien le QR Code "Ma Famille" du responsable.');
               }
             } catch { alert('Format de QR Code invalide.'); }
           }

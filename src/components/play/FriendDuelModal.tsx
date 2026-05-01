@@ -174,10 +174,23 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
           (decodedText: string) => {
             html5QrCode.stop().then(() => {
               let code = decodedText;
-              try { const d = JSON.parse(decodedText); code = d.code || ''; } catch {}
-              // #14 — ignorer les codes vides (QR affiché avant que le serveur réponde)
+              // Détecter si c'est un QR code de jeu ou un QR famille
+              try {
+                const d = JSON.parse(decodedText);
+                // QR Code famille : type 'add-family-member'
+                if (d.type === 'add-family-member') {
+                  alert('Ce QR code est un QR code de famille.\nPour rejoindre une famille, allez dans Amis → Scanner.');
+                  // Redémarrer le scanner
+                  html5QrCode.start({ facingMode: 'environment' }, { fps: 15, qrbox: { width: 250, height: 250 } }, () => {}, () => {});
+                  return;
+                }
+                // QR Code de défi : contient un code de jeu
+                code = d.code || '';
+              } catch {
+                // Texte brut = code direct
+              }
               if (!code || code.trim().length < 2) {
-                html5QrCode.start({ facingMode: 'environment' }, { fps: 15, qrbox: { width: 250, height: 250 } }, startScanner as any, () => {});
+                html5QrCode.start({ facingMode: 'environment' }, { fps: 15, qrbox: { width: 250, height: 250 } }, () => {}, () => {});
                 return;
               }
               setGameCode(code);
@@ -444,9 +457,15 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
               <Loader2 className="w-10 h-10 animate-spin text-primary" />
               <div className="text-center">
                 <p className="font-nunito font-black text-lg">Connexion en cours…</p>
-                <p className="text-sm text-muted-foreground mt-1">En attente de l'hôte</p>
+                <p className="text-sm text-muted-foreground mt-1">En attente de l’hôte</p>
               </div>
               <p className="text-xs text-muted-foreground font-mono bg-muted px-3 py-1.5 rounded-lg">{gameCode}</p>
+              <button
+                className="text-xs text-muted-foreground underline mt-2"
+                onClick={() => setStep('scanning')}
+              >
+                Problème ? Réessayer
+              </button>
             </motion.div>
           )}
           {step === 'matched' && opponent && (

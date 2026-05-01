@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { ChildProfile, ParentAccount, AccountType, MatchMode, ScoreDetail } from './types';
+import type { ChildProfile, ParentAccount, AccountType, MatchMode, ScoreDetail, LeaderboardFilter } from './types';
 
 // ─── AUTHENTIFICATION ────────────────────────────────────────────────────────
 
@@ -297,11 +297,25 @@ export async function uploadMatchMedia(file: File, matchId: string): Promise<str
 
 // ─── LEADERBOARD & STATS ────────────────────────────────────────────────────
 
-export async function getGlobalLeaderboard(): Promise<{ data: any[], error: any }> {
-  // Option 1 : Utilisation d'une vue ou table (si tu as créé une Vue leaderboard_view)
-  // Sinon, ci-dessous une fonction qui appelle une RPC ou sélectionne la vue existante. 
-  // Ici nous tirons parti de la future vue leaderboard_view Supabase
-  const { data, error } = await supabase
+export async function getGlobalLeaderboard(filter: LeaderboardFilter = 'month'): Promise<{ data: any[], error: any }> {
+  // Déterminer la date de début selon le filtre
+  const now = new Date();
+  let startDate: string;
+
+  if (filter === 'month') {
+    // Début du mois en cours
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  } else if (filter === 'year') {
+    // Début de l'année en cours
+    startDate = new Date(now.getFullYear(), 0, 1).toISOString();
+  } else {
+    // Saison : les 3 derniers mois
+    startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1).toISOString();
+  }
+
+  // On essaie d'abord la vue leaderboard_view qui a season_xp global
+  // Puis on calcule l'XP de la période depuis les matchs
+  const { data: profilesData, error: profilesError } = await supabase
     .from('leaderboard_view')
     .select('*')
     .order('tier_weight', { ascending: false })
@@ -310,39 +324,95 @@ export async function getGlobalLeaderboard(): Promise<{ data: any[], error: any 
     .order('match_count', { ascending: false })
     .limit(50);
 
-  if (data) {
-    let currentRank = 1;
-    const mapped = data.map((p: any, i: number) => {
-      // Affinage du rang en cas d'égalité sur tous les points (XP + Matchs)
-      if (i > 0) {
-        const prev = data[i - 1];
-        const isTie = 
-          prev.tier_weight === p.tier_weight &&
-          prev.rank_step === p.rank_step &&
-          prev.season_xp === p.season_xp &&
-          prev.match_count === p.match_count;
-        if (!isTie) {
-          currentRank = i + 1;
-        }
-      }
+  if (!profilesData) return { data: [], error: profilesError };
 
-      return {
-        rank: currentRank,
-        id: p.id,
-        pseudo: p.pseudo,
-        avatarEmoji: p.avatar_emoji,
-        elo: p.elo,
-        city: p.city,
-        hasLumios: p.has_lumios,
-        rankTier: p.rank_tier || 'bronze',
-        rankStep: p.rank_step ?? 0,
-        seasonXp: p.season_xp ?? 0,
-        matchCount: p.match_count ?? 0,
-      };
-    });
-    return { data: mapped, error: null };
+  // Pour chaque profil, calculer l'XP gagné sur la période demandée
+  const profileIds = profilesData.map((p: any) => p.id);
+
+  // Agréger les XP de la période depuis les matchs
+  const { data: matchXpData } = await supabase
+    .from('matches')
+    .select('player1_id, player2_id, winner_id')
+    .gte('created_at', startDate)
+    .in('player1_id', profileIds);
+
+  // Aussi pour player2
+  const { data: matchXpData2 } = await supabase
+    .from('matches')
+    .select('player1_id, player2_id, winner_id')
+    .gte('created_at', startDate)
+    .in('player2_id', profileIds);
+
+  // Construire une map d'XP par période et de matchs par période
+  // XP estimé : 100 par victoire, 10 par défaite (approximation rapide)
+  const periodXpMap = new Map<string, number>();
+  const periodMatchMap = new Map<string, number>();
+
+  const allMatches = [...(matchXpData || []), ...(matchXpData2 || [])];
+  // Dé-dupliquer par match (un match peut apparaître dans les deux requêtes)
+  const seenMatchIds = new Set<string>();
+
+  for (const m of allMatches) {
+    // Utiliser une clé composite pour dé-dupliquer
+    const key = [m.player1_id, m.player2_id].sort().join('_');
+    if (seenMatchIds.has(key + (m as any).created_at)) continue;
+    seenMatchIds.add(key + (m as any).created_at);
+
+    // P1
+    const p1Xp = m.winner_id === m.player1_id ? 100 : 10;
+    periodXpMap.set(m.player1_id, (periodXpMap.get(m.player1_id) || 0) + p1Xp);
+    periodMatchMap.set(m.player1_id, (periodMatchMap.get(m.player1_id) || 0) + 1);
+
+    // P2
+    const p2Xp = m.winner_id === m.player2_id ? 100 : 10;
+    periodXpMap.set(m.player2_id, (periodXpMap.get(m.player2_id) || 0) + p2Xp);
+    periodMatchMap.set(m.player2_id, (periodMatchMap.get(m.player2_id) || 0) + 1);
   }
-  return { data: [], error };
+
+  // Mapper les profils avec l'XP de la période
+  const mapped = profilesData
+    .map((p: any) => ({
+      id: p.id,
+      pseudo: p.pseudo,
+      avatarEmoji: p.avatar_emoji,
+      elo: p.elo,
+      city: p.city,
+      hasLumios: p.has_lumios,
+      rankTier: p.rank_tier || 'bronze',
+      rankStep: p.rank_step ?? 0,
+      tierWeight: p.tier_weight ?? 0,
+      // XP de la période sélectionnée
+      seasonXp: filter === 'month' || filter === 'season'
+        ? (periodXpMap.get(p.id) || 0)
+        : (p.season_xp ?? 0),
+      matchCount: filter === 'month' || filter === 'season'
+        ? (periodMatchMap.get(p.id) || 0)
+        : (p.match_count ?? 0),
+    }))
+    // Trier par : tier (desc), XP période (desc), matchs (desc)
+    .sort((a: any, b: any) => {
+      if (b.tierWeight !== a.tierWeight) return b.tierWeight - a.tierWeight;
+      if (b.rankStep !== a.rankStep) return b.rankStep - a.rankStep;
+      if (b.seasonXp !== a.seasonXp) return b.seasonXp - a.seasonXp;
+      return b.matchCount - a.matchCount;
+    });
+
+  // Attribuer les rangs
+  let currentRank = 1;
+  const ranked = mapped.map((p: any, i: number) => {
+    if (i > 0) {
+      const prev = mapped[i - 1];
+      const isTie =
+        prev.tierWeight === p.tierWeight &&
+        prev.rankStep === p.rankStep &&
+        prev.seasonXp === p.seasonXp &&
+        prev.matchCount === p.matchCount;
+      if (!isTie) currentRank = i + 1;
+    }
+    return { ...p, rank: currentRank };
+  });
+
+  return { data: ranked, error: null };
 }
 
 export async function getMatchHistory(profileId: string): Promise<{ data: any[], error: any }> {
