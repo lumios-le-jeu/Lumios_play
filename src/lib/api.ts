@@ -393,6 +393,8 @@ export async function getGlobalLeaderboard(filter: LeaderboardFilter = 'month'):
           : (p.match_count ?? 0),
       };
     })
+    // Ne pas afficher les joueurs qui n'ont fait aucun match sur la période
+    .filter((p: any) => p.matchCount > 0)
     // Trier par : tier (desc), XP période (desc), matchs (desc)
     .sort((a: any, b: any) => {
       if (b.tierWeight !== a.tierWeight) return b.tierWeight - a.tierWeight;
