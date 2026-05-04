@@ -240,8 +240,8 @@ io.on('connection', (socket) => {
 
         if (supabase) {
           try {
-            // 1. Enregistrer le match
-            await supabase.from('matches').insert([{
+            // 1. Enregistrer le match (avec XP si les colonnes existent)
+            const matchRecord = {
               player1_id: masterVote.p1Id,
               player2_id: masterVote.p2Id,
               winner_id: masterVote.winnerId,
@@ -255,10 +255,16 @@ io.on('connection', (socket) => {
               comment_loser: masterVote.commentLoser,
               media_url: masterVote.mediaUrl,
               validated_by_loser: true,
-            }]);
+            };
 
-            // 2. Mettre à jour le profil P1 (hôte)
-            if (masterVote.matchMode === 'competitive') {
+            // Ajouter l'XP si masterVote les contient (le schéma doit être à jour)
+            if (masterVote.xpP1 !== undefined) matchRecord.xp_change_p1 = masterVote.xpP1;
+            if (masterVote.xpP2 !== undefined) matchRecord.xp_change_p2 = masterVote.xpP2;
+
+            await supabase.from('matches').insert([matchRecord]);
+
+            // 2. Mettre à jour les profils (XP et Streaks)
+            if (masterVote.matchMode === 'competitive' || masterVote.matchMode === 'friendly') {
               const { data: p1Data } = await supabase.from('profiles').select('season_xp, win_streak').eq('id', masterVote.p1Id).single();
               const { data: p2Data } = await supabase.from('profiles').select('season_xp, win_streak').eq('id', masterVote.p2Id).single();
               

@@ -125,25 +125,34 @@ export default function FamilyDuelModal({ profile, onClose, onRefreshProfile }: 
       matchType: 'duel',
       stepChangeP1: p1Update.stepChange,
       stepChangeP2: p2Update.stepChange,
+      xpChangeP1: p1Update.xpChange,
+      xpChangeP2: p2Update.xpChange,
       validatedByLoser: true, // auto-validé car sur 1 seul téléphone
     });
 
     if (!error) {
+      // Fetch fresh stats to avoid stale state overwriting
+      const { data: p1Data } = await supabase.from('profiles').select('season_xp, win_streak').eq('id', profile.id).single();
+      const { data: p2Data } = await supabase.from('profiles').select('season_xp, win_streak').eq('id', opponent.id).single();
+
+      const freshP1Xp = p1Data?.season_xp || 0;
+      const freshP2Xp = p2Data?.season_xp || 0;
+
       // Mettre à jour les rangs en DB pour les deux joueurs
       await Promise.all([
         updateProfileRank(
           profile.id,
           p1Update.newTier,
           p1Update.newRankStep,
-          profile.seasonXp + p1Update.xpChange,
-          p1Won ? profile.winStreak + 1 : 0,
+          freshP1Xp + p1Update.xpChange,
+          p1Won ? (p1Data?.win_streak || 0) + 1 : 0,
         ),
         updateProfileRank(
           opponent.id,
           p2Update.newTier,
           p2Update.newRankStep,
-          opponent.seasonXp + p2Update.xpChange,
-          p1Won ? 0 : 1,
+          freshP2Xp + p2Update.xpChange,
+          p1Won ? 0 : (p2Data?.win_streak || 0) + 1,
         ),
       ]);
 

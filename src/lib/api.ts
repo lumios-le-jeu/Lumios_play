@@ -227,6 +227,8 @@ export async function submitMatchResult(match: {
   matchType: 'duel' | 'arena' | 'competition';
   stepChangeP1: number;
   stepChangeP2: number;
+  xpChangeP1?: number;
+  xpChangeP2?: number;
   commentWinner?: string;
   commentLoser?: string;
   mediaUrl?: string;
@@ -245,6 +247,8 @@ export async function submitMatchResult(match: {
       format: 'BO3',
       step_change_p1: match.stepChangeP1,
       step_change_p2: match.stepChangeP2,
+      ...(match.xpChangeP1 !== undefined && { xp_change_p1: match.xpChangeP1 }),
+      ...(match.xpChangeP2 !== undefined && { xp_change_p2: match.xpChangeP2 }),
       comment_winner: match.commentWinner || null,
       comment_loser: match.commentLoser || null,
       media_url: match.mediaUrl || null,
