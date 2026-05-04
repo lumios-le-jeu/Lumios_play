@@ -783,3 +783,23 @@ export async function getSentPendingRequests(profileId: string): Promise<{ data:
 
   return { data: mapped, error: null };
 }
+
+export async function getFamilyAccount(id: string): Promise<{ data: ParentAccount | null, error: any }> {
+  const { data, error } = await supabase
+    .from('parent_accounts')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error || !data) return { data: null, error };
+
+  return {
+    data: {
+      id: data.id,
+      name: data.name,
+      email: data.email,
+      accountType: data.account_type || 'family',
+    },
+    error: null,
+  };
+}

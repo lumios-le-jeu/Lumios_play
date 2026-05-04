@@ -6,7 +6,7 @@ import type { ChildProfile, ParentAccount } from '../../lib/types';
 import { getTierConfig } from '../../lib/types';
 import { getRankDisplayName, getRankProgress, getNextRankName, fromGlobalStep } from '../../lib/ranking';
 import { formatDate } from '../../lib/utils';
-import { searchFamilyAccounts, requestFamilyLink, getPendingFamilyRequests, acceptFamilyLink, declineFamilyLink } from '../../lib/api';
+import { searchFamilyAccounts, requestFamilyLink, getPendingFamilyRequests, acceptFamilyLink, declineFamilyLink, getFamilyAccount } from '../../lib/api';
 
 interface ProfileScreenProps {
   profile: ChildProfile;
@@ -15,6 +15,7 @@ interface ProfileScreenProps {
   onSelectProfile?: (profile: ChildProfile) => void;
   onLogout: () => void;
   onSwitchProfile: () => void;
+  onRefreshProfiles?: () => void;
 }
 
 const MENU_ITEMS = [
@@ -23,7 +24,9 @@ const MENU_ITEMS = [
   { id: 'settings',      icon: Settings, label: 'Paramètres',        desc: 'Langue, son, apparence' },
 ];
 
-export default function ProfileScreen({ profile, parentAccount, familyProfiles = [], onSelectProfile, onLogout, onSwitchProfile }: ProfileScreenProps) {
+export default function ProfileScreen({ 
+  profile, parentAccount, familyProfiles = [], onSelectProfile, onLogout, onSwitchProfile, onRefreshProfiles 
+}: ProfileScreenProps) {
   const [showComingSoon, setShowComingSoon] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [showFamilyQR, setShowFamilyQR] = useState(false); // C1 — QR code famille
@@ -36,6 +39,7 @@ export default function ProfileScreen({ profile, parentAccount, familyProfiles =
   const [familyRequestSent, setFamilyRequestSent] = useState<string | null>(null);
   const [pendingLinks, setPendingLinks] = useState<any[]>([]);
   const [linkLoading, setLinkLoading] = useState(false);
+  const [linkedFamilyName, setLinkedFamilyName] = useState<string | null>(null);
   const familyScannerRef = useRef<any>(null);
 
   const isIndividual = profile.accountType === 'individual';
@@ -47,6 +51,17 @@ export default function ProfileScreen({ profile, parentAccount, familyProfiles =
       getPendingFamilyRequests(parentAccount.id).then(({ data }) => setPendingLinks(data));
     }
   }, [isFamilyAdmin, parentAccount?.id]);
+
+  // Charger le nom de la famille rattachée si applicable
+  useEffect(() => {
+    if (profile.rattachmentParentId) {
+      getFamilyAccount(profile.rattachmentParentId).then(({ data }) => {
+        if (data) setLinkedFamilyName(data.name);
+      });
+    } else {
+      setLinkedFamilyName(null);
+    }
+  }, [profile.rattachmentParentId]);
 
   // Recherche famille
   useEffect(() => {
@@ -127,6 +142,7 @@ export default function ProfileScreen({ profile, parentAccount, familyProfiles =
     await acceptFamilyLink(req.requestId, req.id, parentAccount.id);
     setPendingLinks(prev => prev.filter(r => r.requestId !== req.requestId));
     setLinkLoading(false);
+    onRefreshProfiles?.();
   };
 
   const handleDeclineLink = async (requestId: string) => {
@@ -167,6 +183,13 @@ export default function ProfileScreen({ profile, parentAccount, familyProfiles =
             <div className="flex items-center justify-center gap-1.5 mb-1">
               <Home className="w-3.5 h-3.5 text-primary" />
               <span className="text-sm font-bold text-primary">Famille {parentAccount.name}</span>
+            </div>
+          )}
+
+          {profile.accountType === 'individual' && linkedFamilyName && (
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <Home className="w-3.5 h-3.5 text-primary" />
+              <span className="text-sm font-bold text-primary">Rattaché à : Famille {linkedFamilyName}</span>
             </div>
           )}
 

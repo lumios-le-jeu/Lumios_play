@@ -308,7 +308,15 @@ export default function App() {
       : <LeaderboardScreen profile={currentProfile} onRefreshProfile={refreshCurrentProfile} />,
     profile: isGuest
       ? <GuestLockScreen onCreateAccount={handleGuestConvert} />
-      : <ProfileScreen profile={currentProfile} onLogout={handleLogout} onSwitchProfile={handleSwitchProfile} parentAccount={parent || undefined} familyProfiles={profiles} onSelectProfile={handleProfileSelect} />,
+      : <ProfileScreen 
+          profile={currentProfile} 
+          onLogout={handleLogout} 
+          onSwitchProfile={handleSwitchProfile} 
+          parentAccount={parent || undefined} 
+          familyProfiles={profiles} 
+          onSelectProfile={handleProfileSelect} 
+          onRefreshProfiles={() => refreshCurrentProfile()}
+        />,
   };
 
   return (
