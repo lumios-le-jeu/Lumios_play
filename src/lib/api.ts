@@ -502,6 +502,7 @@ export async function getFriends(profileId: string): Promise<{ data: any[], erro
       status: f.status,
       rankTier: f.friend.rank_tier || 'bronze',
       rankStep: f.friend.rank_step ?? 0,
+      seasonXp: f.friend.season_xp ?? 0,
       matchCount: count || 0,
       isFamily: false,
     };
@@ -535,6 +536,7 @@ export async function getFriends(profileId: string): Promise<{ data: any[], erro
           status: 'accepted',
           rankTier: fp.rank_tier || 'bronze',
           rankStep: fp.rank_step ?? 0,
+          seasonXp: fp.season_xp ?? 0,
           matchCount: count || 0,
           isFamily: true,
           relation: fp.relation,
@@ -553,7 +555,7 @@ export async function getPendingFriendRequests(profileId: string): Promise<{ dat
     .select(`
       status,
       requester:profiles!friends_profile_id_fkey (
-        id, pseudo, avatar_emoji, has_lumios, elo, city, rank_tier, rank_step
+        id, pseudo, avatar_emoji, has_lumios, elo, city, rank_tier, rank_step, season_xp
       )
     `)
     .eq('friend_id', profileId)
@@ -569,6 +571,7 @@ export async function getPendingFriendRequests(profileId: string): Promise<{ dat
     city: r.requester.city,
     rankTier: r.requester.rank_tier || 'bronze',
     rankStep: r.requester.rank_step ?? 0,
+    seasonXp: r.requester.season_xp ?? 0,
   }));
 
   return { data: mapped, error: null };
@@ -770,7 +773,7 @@ export async function getSentPendingRequests(profileId: string): Promise<{ data:
   // 2. Récupérer les profils correspondants
   const { data: profiles, error: profileError } = await supabase
     .from('profiles')
-    .select('id, pseudo, avatar_emoji, rank_tier, rank_step')
+    .select('id, pseudo, avatar_emoji, rank_tier, rank_step, season_xp')
     .in('id', friendIds);
 
   if (profileError) return { data: [], error: profileError };
@@ -781,6 +784,7 @@ export async function getSentPendingRequests(profileId: string): Promise<{ data:
     avatarEmoji: p.avatar_emoji,
     rankTier: p.rank_tier || 'bronze',
     rankStep: p.rank_step ?? 0,
+    seasonXp: p.season_xp ?? 0,
   }));
 
   return { data: mapped, error: null };
