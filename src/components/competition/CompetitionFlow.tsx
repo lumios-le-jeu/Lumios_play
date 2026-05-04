@@ -18,7 +18,7 @@ type Step = 1 | 2 | 3 | 4 | 'play';
 export default function CompetitionFlow({ onClose }: CompetitionFlowProps) {
   const [step, setStep] = useState<Step>(1);
   const [name, setName] = useState('');
-  const [type, setType] = useState<CompetitionType>('friendly');
+  const [type, setType] = useState<CompetitionType>('ranked');
   const [format, setFormat] = useState<CompetitionFormat>('elimination');
   const [homeAway, setHomeAway] = useState(false); // #9 — option aller-retour
   const [players, setPlayers] = useState<{ pseudo: string; elo?: number }[]>([]);
@@ -171,7 +171,6 @@ export default function CompetitionFlow({ onClose }: CompetitionFlowProps) {
                     <h4 className="font-nunito font-black text-base mb-4">Type de compétition</h4>
                     <div className="flex flex-col gap-3">
                       {([
-                        { val: 'friendly', label: 'Amicale', icon: '🎮', desc: 'Pseudo libre, pas d\'impact sur le rang' },
                         { val: 'ranked',   label: 'Classée',  icon: '⚡', desc: 'Points de rang en jeu, comptes requis' },
                       ] as const).map(opt => (
                         <button key={opt.val} onClick={() => setType(opt.val)} className={`flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all ${type === opt.val ? 'border-accent bg-accent/5' : 'border-border bg-card'}`}>

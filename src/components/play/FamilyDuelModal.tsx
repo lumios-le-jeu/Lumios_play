@@ -277,27 +277,7 @@ export default function FamilyDuelModal({ profile, onClose, onRefreshProfile }: 
                 </div>
               </div>
 
-              {/* Mode */}
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 block">Mode de jeu</label>
-                <div className="flex gap-3">
-                  {[
-                    { val: 'competitive' as MatchMode, icon: <Trophy className="w-4 h-4" />, label: 'Compétitif', desc: 'Impact sur le rang', color: 'text-amber-600' },
-                    { val: 'friendly' as MatchMode, icon: <Swords className="w-4 h-4" />, label: 'Amical', desc: 'Fun uniquement', color: 'text-blue-600' },
-                  ].map(m => (
-                    <button
-                      key={m.val}
-                      onClick={() => setMatchMode(m.val)}
-                      className={`flex-1 py-3 px-3 rounded-xl border-2 font-nunito font-bold text-sm transition-all text-left ${
-                        matchMode === m.val ? 'border-primary bg-primary/5' : 'border-border bg-card'
-                      }`}
-                    >
-                      <div className={`flex items-center gap-2 mb-0.5 ${m.color}`}>{m.icon}<span>{m.label}</span></div>
-                      <span className="text-[10px] font-medium text-muted-foreground">{m.desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* Mode de jeu par défaut (Compétitif) */}
 
               <button
                 className="btn-primary w-full py-4 font-nunito font-black text-base"
@@ -470,9 +450,7 @@ export default function FamilyDuelModal({ profile, onClose, onRefreshProfile }: 
                 </div>
               </div>
 
-              {matchMode === 'friendly' && (
-                <p className="text-xs text-muted-foreground italic text-center">Match amical — pas d'impact sur le classement</p>
-              )}
+
 
               <button className="btn-primary w-full py-4 font-nunito font-black" onClick={handleClose}>
                 Terminer ✅

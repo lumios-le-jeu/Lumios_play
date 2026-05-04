@@ -365,30 +365,7 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
             <motion.div key="setup" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}>
               <p className="text-muted-foreground text-sm mb-5">Affrontez un ami physiquement côte à côte. Toujours en 2 manches gagnantes.</p>
 
-              {/* Match Mode */}
-              <div className="mb-5">
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 block">Mode de jeu</label>
-                <div className="flex gap-3">
-                  {([
-                    { val: 'competitive' as MatchMode, icon: <Trophy className="w-4 h-4" />, label: 'Compétitif', desc: 'Impact sur le rang', color: 'text-amber-600 bg-amber-50 border-amber-200' },
-                    { val: 'friendly' as MatchMode, icon: <Swords className="w-4 h-4" />, label: 'Amical', desc: 'Fun uniquement', color: 'text-blue-600 bg-blue-50 border-blue-200' },
-                  ]).map(m => (
-                    <button
-                      key={m.val}
-                      onClick={() => setMatchMode(m.val)}
-                      className={`flex-1 py-3 px-3 rounded-xl border-2 font-nunito font-bold text-sm transition-all text-left ${
-                        matchMode === m.val ? `border-primary bg-primary/5` : 'border-border bg-card'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-0.5">
-                        {m.icon}
-                        <span>{m.label}</span>
-                      </div>
-                      <span className="text-[10px] font-medium text-muted-foreground">{m.desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* Mode de jeu sélectionné automatiquement (Compétitif) */}
 
               <div className="flex flex-col gap-3">
                 <button className="btn-primary w-full py-3.5" onClick={() => setStep('qr-host')}><QrCode className="w-5 h-5" /> Afficher mon QR Code</button>
@@ -400,8 +377,8 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
           {/* ── QR HOST ── */}
           {step === 'qr-host' && (
             <motion.div key="qr-host" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-4">
-              <div className={`px-3 py-1 rounded-lg text-xs font-bold ${matchMode === 'competitive' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
-                {matchMode === 'competitive' ? '🏆 Compétitif' : '⚔️ Amical'}
+              <div className="px-3 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-700">
+                🏆 Compétitif
               </div>
               {/* #14 — Ne pas afficher le QR tant que le code est vide */}
               {gameCode ? (
@@ -470,8 +447,8 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
           )}
           {step === 'matched' && opponent && (
             <motion.div key="matched" initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-5 py-2">
-              <div className={`px-3 py-1 rounded-lg text-xs font-bold ${matchMode === 'competitive' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
-                {matchMode === 'competitive' ? '🏆 Compétitif' : '⚔️ Amical'}
+              <div className="px-3 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-700">
+                🏆 Compétitif
               </div>
               <div className="flex items-center gap-6 p-4 bg-muted rounded-2xl w-full">
                 <div className="flex-1 text-center">
@@ -693,9 +670,7 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
                 </div>
               </div>
 
-              {matchMode === 'friendly' && (
-                <p className="text-xs text-muted-foreground italic text-center">Match amical — pas d'impact sur le classement</p>
-              )}
+
 
               {/* #3 — Suggestion d'ajout en ami */}
               {isFriendAlready === false && opponent && (

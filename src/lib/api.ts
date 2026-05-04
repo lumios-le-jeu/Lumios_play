@@ -326,20 +326,22 @@ export async function getGlobalLeaderboard(filter: LeaderboardFilter = 'month'):
 
   if (!profilesData) return { data: [], error: profilesError };
 
-  // Pour chaque profil, calculer l'XP gagné sur la période demandée
-  const profileIds = profilesData.map((p: any) => p.id);
+  // La vue expose profile_id (pas id) — on l'utilise correctement
+  const profileIds = profilesData.map((p: any) => p.profile_id || p.id);
 
-  // Agréger les XP de la période depuis les matchs
+  // Agréger les XP de la période depuis les matchs compétitifs uniquement
   const { data: matchXpData } = await supabase
     .from('matches')
-    .select('player1_id, player2_id, winner_id')
+    .select('id, player1_id, player2_id, winner_id')
+    .eq('match_mode', 'competitive')
     .gte('created_at', startDate)
     .in('player1_id', profileIds);
 
   // Aussi pour player2
   const { data: matchXpData2 } = await supabase
     .from('matches')
-    .select('player1_id, player2_id, winner_id')
+    .select('id, player1_id, player2_id, winner_id')
+    .eq('match_mode', 'competitive')
     .gte('created_at', startDate)
     .in('player2_id', profileIds);
 
@@ -349,14 +351,12 @@ export async function getGlobalLeaderboard(filter: LeaderboardFilter = 'month'):
   const periodMatchMap = new Map<string, number>();
 
   const allMatches = [...(matchXpData || []), ...(matchXpData2 || [])];
-  // Dé-dupliquer par match (un match peut apparaître dans les deux requêtes)
+  // Dé-dupliquer par id de match (un match peut apparaître dans les deux requêtes)
   const seenMatchIds = new Set<string>();
 
   for (const m of allMatches) {
-    // Utiliser une clé composite pour dé-dupliquer
-    const key = [m.player1_id, m.player2_id].sort().join('_');
-    if (seenMatchIds.has(key + (m as any).created_at)) continue;
-    seenMatchIds.add(key + (m as any).created_at);
+    if (seenMatchIds.has(m.id)) continue;
+    seenMatchIds.add(m.id);
 
     // P1
     const p1Xp = m.winner_id === m.player1_id ? 100 : 10;
@@ -370,25 +370,29 @@ export async function getGlobalLeaderboard(filter: LeaderboardFilter = 'month'):
   }
 
   // Mapper les profils avec l'XP de la période
+  // La vue expose profile_id (alias de p.id dans la vue SQL)
   const mapped = profilesData
-    .map((p: any) => ({
-      id: p.id,
-      pseudo: p.pseudo,
-      avatarEmoji: p.avatar_emoji,
-      elo: p.elo,
-      city: p.city,
-      hasLumios: p.has_lumios,
-      rankTier: p.rank_tier || 'bronze',
-      rankStep: p.rank_step ?? 0,
-      tierWeight: p.tier_weight ?? 0,
-      // XP de la période sélectionnée
-      seasonXp: filter === 'month' || filter === 'season'
-        ? (periodXpMap.get(p.id) || 0)
-        : (p.season_xp ?? 0),
-      matchCount: filter === 'month' || filter === 'season'
-        ? (periodMatchMap.get(p.id) || 0)
-        : (p.match_count ?? 0),
-    }))
+    .map((p: any) => {
+      const pid = p.profile_id || p.id; // compatibilité si la vue renomme
+      return {
+        id: pid,
+        pseudo: p.pseudo,
+        avatarEmoji: p.avatar_emoji,
+        elo: p.elo,
+        city: p.city,
+        hasLumios: p.has_lumios,
+        rankTier: p.rank_tier || 'bronze',
+        rankStep: p.rank_step ?? 0,
+        tierWeight: p.tier_weight ?? 0,
+        // XP compétitif de la période sélectionnée
+        seasonXp: filter === 'month' || filter === 'season'
+          ? (periodXpMap.get(pid) || 0)
+          : (p.season_xp ?? 0),
+        matchCount: filter === 'month' || filter === 'season'
+          ? (periodMatchMap.get(pid) || 0)
+          : (p.match_count ?? 0),
+      };
+    })
     // Trier par : tier (desc), XP période (desc), matchs (desc)
     .sort((a: any, b: any) => {
       if (b.tierWeight !== a.tierWeight) return b.tierWeight - a.tierWeight;
