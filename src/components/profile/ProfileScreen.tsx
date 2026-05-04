@@ -285,20 +285,35 @@ export default function ProfileScreen({
       {/* #15 — Rattachement famille (compte individuel) */}
       {isIndividual && (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.10 }} className="mb-4">
-          <motion.button
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setShowFamilyLink(true)}
-            className="card-lumios p-4 flex items-center gap-3 w-full text-left card-lumios-hover"
-          >
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'hsl(var(--lumios-green)/0.12)' }}>
-              <Users className="w-5 h-5" style={{ color: 'hsl(var(--lumios-green))' }} />
+          {!profile.rattachmentParentId ? (
+            <motion.button
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setShowFamilyLink(true)}
+              className="card-lumios p-4 flex items-center gap-3 w-full text-left card-lumios-hover"
+            >
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'hsl(var(--lumios-green)/0.12)' }}>
+                <Users className="w-5 h-5" style={{ color: 'hsl(var(--lumios-green))' }} />
+              </div>
+              <div className="flex-1">
+                <p className="font-nunito font-black text-sm">Rejoindre une famille</p>
+                <p className="text-xs text-muted-foreground">Rattacher ce profil à un compte famille</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </motion.button>
+          ) : (
+            <div className="card-lumios p-4 flex items-center gap-3 w-full text-left bg-primary/5 border-primary/20">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center gradient-lumios">
+                <Home className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="font-nunito font-black text-sm">Ma Famille Lumios</p>
+                <p className="text-xs text-primary font-bold">
+                  {linkedFamilyName ? `Famille ${linkedFamilyName}` : 'Chargement...'}
+                </p>
+              </div>
+              <div className="badge-lumios badge-blue">Rattaché</div>
             </div>
-            <div className="flex-1">
-              <p className="font-nunito font-black text-sm">Rejoindre une famille</p>
-              <p className="text-xs text-muted-foreground">Rattacher ce profil à un compte famille</p>
-            </div>
-            <ChevronRight className="w-4 h-4 text-muted-foreground" />
-          </motion.button>
+          )}
         </motion.div>
       )}
 
