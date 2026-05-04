@@ -182,11 +182,12 @@ export async function updateProfileLumiosStatus(profileId: string, hasLumios: bo
 
 export async function updateProfileRank(
   profileId: string,
-  rankTier: string,
+  rankTier: RankTier,
   rankStep: number,
   seasonXp: number,
   winStreak: number,
 ): Promise<boolean> {
+  if (isGuest(profileId)) return true;
   const { error } = await supabase
     .from('profiles')
     .update({
@@ -201,7 +202,10 @@ export async function updateProfileRank(
 
 // ─── DAILY DUEL LIMIT ───────────────────────────────────────────────────────
 
+const isGuest = (id: string) => id.startsWith('guest-');
+
 export async function getDailyDuelCount(profileId: string, opponentId: string): Promise<number> {
+  if (isGuest(profileId) || isGuest(opponentId)) return 0;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -217,23 +221,10 @@ export async function getDailyDuelCount(profileId: string, opponentId: string): 
 
 // ─── MATCH SUBMISSION ───────────────────────────────────────────────────────
 
-export async function submitMatchResult(match: {
-  player1Id: string;
-  player2Id: string;
-  winnerId: string;
-  score: string;
-  scoreDetail: ScoreDetail;
-  matchMode: MatchMode;
-  matchType: 'duel' | 'arena' | 'competition';
-  stepChangeP1: number;
-  stepChangeP2: number;
-  xpChangeP1?: number;
-  xpChangeP2?: number;
-  commentWinner?: string;
-  commentLoser?: string;
-  mediaUrl?: string;
-  validatedByLoser?: boolean;
-}): Promise<{ data: any; error: any }> {
+export async function submitMatchResult(match: MatchResult): Promise<{ data: any; error: any }> {
+  if (isGuest(match.player1Id) || isGuest(match.player2Id)) {
+    return { data: { id: 'guest-match-' + Date.now() }, error: null };
+  }
   const { data, error } = await supabase
     .from('matches')
     .insert([{
@@ -280,6 +271,7 @@ export async function validateMatch(matchId: string): Promise<boolean> {
 // ─── MEDIA UPLOAD ───────────────────────────────────────────────────────────
 
 export async function uploadMatchMedia(file: File, matchId: string): Promise<string | null> {
+  if (matchId.startsWith('guest-match')) return null;
   const ext = file.name.split('.').pop();
   const path = `match-media/${matchId}.${ext}`;
 
@@ -593,6 +585,7 @@ export async function searchProfiles(query: string, excludeId?: string): Promise
 }
 
 export async function addFriend(profileId: string, friendId: string): Promise<boolean> {
+  if (isGuest(profileId) || isGuest(friendId)) return false;
   const { error } = await supabase
     .from('friends')
     .upsert([
