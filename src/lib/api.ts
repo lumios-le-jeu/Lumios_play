@@ -345,9 +345,7 @@ export async function getGlobalLeaderboard(filter: LeaderboardFilter = 'month'):
     .gte('created_at', startDate)
     .in('player2_id', profileIds);
 
-  // Construire une map d'XP par période et de matchs par période
-  // XP estimé : 100 par victoire, 10 par défaite (approximation rapide)
-  const periodXpMap = new Map<string, number>();
+  // Construire une map de matchs par période
   const periodMatchMap = new Map<string, number>();
 
   const allMatches = [...(matchXpData || []), ...(matchXpData2 || [])];
@@ -359,13 +357,9 @@ export async function getGlobalLeaderboard(filter: LeaderboardFilter = 'month'):
     seenMatchIds.add(m.id);
 
     // P1
-    const p1Xp = m.winner_id === m.player1_id ? 100 : 10;
-    periodXpMap.set(m.player1_id, (periodXpMap.get(m.player1_id) || 0) + p1Xp);
     periodMatchMap.set(m.player1_id, (periodMatchMap.get(m.player1_id) || 0) + 1);
 
     // P2
-    const p2Xp = m.winner_id === m.player2_id ? 100 : 10;
-    periodXpMap.set(m.player2_id, (periodXpMap.get(m.player2_id) || 0) + p2Xp);
     periodMatchMap.set(m.player2_id, (periodMatchMap.get(m.player2_id) || 0) + 1);
   }
 
@@ -384,10 +378,8 @@ export async function getGlobalLeaderboard(filter: LeaderboardFilter = 'month'):
         rankTier: p.rank_tier || 'bronze',
         rankStep: p.rank_step ?? 0,
         tierWeight: p.tier_weight ?? 0,
-        // XP compétitif de la période sélectionnée
-        seasonXp: filter === 'month' || filter === 'season'
-          ? (periodXpMap.get(pid) || 0)
-          : (p.season_xp ?? 0),
+        // XP réel du profil (l'approximation faussait les résultats)
+        seasonXp: p.season_xp ?? 0,
         matchCount: filter === 'month' || filter === 'season'
           ? (periodMatchMap.get(pid) || 0)
           : (p.match_count ?? 0),
