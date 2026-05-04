@@ -101,6 +101,7 @@ function mapProfile(p: any): ChildProfile {
     winStreak: p.win_streak ?? 0,
     accountType: p.account_type || 'family',
     relation: p.relation,
+    rattachmentParentId: p.rattachment_parent_id,
   };
 }
 
@@ -108,7 +109,7 @@ export async function getProfilesForParent(parentId: string): Promise<{ data: Ch
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
-    .eq('parent_id', parentId)
+    .or(`parent_id.eq.${parentId},rattachment_parent_id.eq.${parentId}`)
     .order('created_at', { ascending: true });
 
   if (data) {
@@ -658,10 +659,10 @@ export async function getPendingFamilyRequests(parentId: string): Promise<{ data
 
 /** Accepter le rattachement : déplacer le profil sous la famille */
 export async function acceptFamilyLink(requestId: string, requesterProfileId: string, familyParentId: string): Promise<boolean> {
-  // Mettre à jour le parent_id du profil individuel
+  // Rattaché à la famille sans changer le propriétaire (parent_id)
   const { error: e1 } = await supabase
     .from('profiles')
-    .update({ parent_id: familyParentId, account_type: 'family' })
+    .update({ rattachment_parent_id: familyParentId })
     .eq('id', requesterProfileId);
   if (e1) return false;
 

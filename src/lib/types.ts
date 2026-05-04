@@ -108,6 +108,7 @@ export interface ChildProfile {
   winStreak: number;
   accountType: AccountType;
   relation?: string;
+  rattachmentParentId?: string;
 }
 
 export interface GuestProfile {
