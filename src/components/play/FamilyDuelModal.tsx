@@ -4,11 +4,10 @@ import { X, Users, Trophy, Swords, Check, ChevronRight, Loader2, User, RotateCcw
 import type { ChildProfile, MatchMode, ScoreDetail } from '../../lib/types';
 import { getTierConfig } from '../../lib/types';
 import { getRankDisplayName, calculateRankingUpdate } from '../../lib/ranking';
-import { getFriends } from '../../lib/api';
-import { submitMatchResult, updateProfileRank } from '../../lib/api';
+import { getFriends, submitMatchResult, updateProfileRank, getDailyDuelCount } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 import { formatStepChange } from '../../lib/utils';
 import { MAX_COMPETITIVE_DUELS_PER_DAY } from '../../lib/ranking';
-import { getDailyDuelCount } from '../../lib/api';
 
 interface FamilyDuelModalProps {
   profile: ChildProfile;
