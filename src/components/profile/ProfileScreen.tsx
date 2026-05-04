@@ -86,8 +86,12 @@ export default function ProfileScreen({ profile, parentAccount, familyProfiles =
                 (data.type === 'add-family-member' && data.parentId);
 
               if (isFamilyQR) {
-                await handleRequestLink(data.parentId);
-                alert(`Demande envoyée à la famille ${data.familyName || data.parentName || ''} !`);
+                const success = await handleRequestLink(data.parentId);
+                if (success) {
+                  alert(`Demande envoyée à la famille ${data.familyName || data.parentName || ''} !`);
+                } else {
+                  alert('Erreur lors de l\'envoi de la demande. Vérifiez que la base de données est à jour.');
+                }
               } else {
                 alert('Ce QR Code n\'est pas un QR famille Lumios.\nVérifiez que vous scannez bien le QR Code "Ma Famille" du responsable.');
               }
@@ -109,9 +113,12 @@ export default function ProfileScreen({ profile, parentAccount, familyProfiles =
 
   const handleRequestLink = async (familyParentId: string) => {
     setLinkLoading(true);
-    await requestFamilyLink(profile.id, familyParentId);
-    setFamilyRequestSent(familyParentId);
+    const success = await requestFamilyLink(profile.id, familyParentId);
+    if (success) {
+      setFamilyRequestSent(familyParentId);
+    }
     setLinkLoading(false);
+    return success;
   };
 
   const handleAcceptLink = async (req: any) => {
@@ -530,7 +537,12 @@ export default function ProfileScreen({ profile, parentAccount, familyProfiles =
                       <p className="text-xs text-muted-foreground">{fam.email}</p>
                     </div>
                     <button
-                      onClick={() => !familyRequestSent && handleRequestLink(fam.id)}
+                      onClick={async () => {
+                        if (!familyRequestSent) {
+                          const success = await handleRequestLink(fam.id);
+                          if (!success) alert('Erreur lors de l\'envoi de la demande. La table family_link_requests est probablement manquante en base de données.');
+                        }
+                      }}
                       disabled={familyRequestSent === fam.id || linkLoading}
                       className={`py-1.5 px-3 text-xs rounded-xl font-bold flex items-center gap-1 transition-all ${
                         familyRequestSent === fam.id ? 'bg-muted text-muted-foreground' : 'btn-primary'
