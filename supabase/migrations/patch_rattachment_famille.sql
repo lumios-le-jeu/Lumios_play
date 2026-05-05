@@ -18,3 +18,7 @@ CREATE POLICY "Family admins can update attached profiles" ON public.profiles
   FOR UPDATE USING (
     auth.uid() = (SELECT auth_id FROM public.parent_accounts WHERE id = rattachment_parent_id)
   );
+-- 4. Autoriser la lecture publique des noms de comptes familles (pour la recherche et l'affichage du rattachement)
+DROP POLICY IF EXISTS "Public can view parent account names" ON public.parent_accounts;
+CREATE POLICY "Public can view parent account names" ON public.parent_accounts
+  FOR SELECT USING (true);
