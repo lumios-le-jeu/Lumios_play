@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Crown, Loader2, Flame, Calendar, Trophy, TrendingUp, ChevronLeft, ChevronRight, History } from 'lucide-react';
+import { Crown, Loader2, Flame, Calendar, Trophy, TrendingUp, ChevronLeft, ChevronRight, History, Navigation } from 'lucide-react';
 import type { ChildProfile, LeaderboardFilter } from '../../lib/types';
 import { getTierConfig, MYTHIC_TOP_N, getCurrentGameSeason } from '../../lib/types';
 import { getRankDisplayName } from '../../lib/ranking';
@@ -33,16 +33,19 @@ const PODIUM_ORDER = [2, 1, 3] as const;
 interface LeaderboardScreenProps {
   profile: ChildProfile;
   onRefreshProfile?: () => Promise<void>;
+  familyProfiles?: ChildProfile[];
+  onSelectProfile?: (profile: ChildProfile) => void;
 }
 
 type TabType = 'rank' | 'stats';
 
-export default function LeaderboardScreen({ profile, onRefreshProfile }: LeaderboardScreenProps) {
+export default function LeaderboardScreen({ profile, onRefreshProfile, familyProfiles, onSelectProfile }: LeaderboardScreenProps) {
   const [activeTab, setActiveTab] = useState<TabType>('rank');
   const [filter, setFilter] = useState<LeaderboardFilter>('month');
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
   const fetchLB = useCallback(async () => {
     setIsLoading(true);
@@ -93,9 +96,74 @@ export default function LeaderboardScreen({ profile, onRefreshProfile }: Leaderb
   }
 
   const periodLabel = getPeriodLabel(filter);
+  const rankName = getRankDisplayName(profile.rankTier, profile.rankStep);
+  const tierCfg = getTierConfig(profile.rankTier);
 
   return (
     <div className="screen-wrapper">
+      {/* Header Profil */}
+      <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} className="mb-4 relative z-50">
+        <div className="flex items-center gap-3 mb-1">
+          <div 
+            className={`w-9 h-9 gradient-lumios rounded-xl flex items-center justify-center text-lg ${familyProfiles && familyProfiles.length > 1 ? 'cursor-pointer hover:opacity-90' : ''}`}
+            onClick={() => familyProfiles && familyProfiles.length > 1 && setShowProfileDropdown(!showProfileDropdown)}
+          >
+            {profile.avatarEmoji}
+          </div>
+          <div 
+            className={familyProfiles && familyProfiles.length > 1 ? 'cursor-pointer hover:opacity-90 flex items-center gap-1' : ''}
+            onClick={() => familyProfiles && familyProfiles.length > 1 && setShowProfileDropdown(!showProfileDropdown)}
+          >
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Bonjour,</p>
+              <h1 className="font-nunito font-black text-lg leading-tight flex items-center gap-1">
+                {profile.pseudo} 👋
+                {familyProfiles && familyProfiles.length > 1 && <Navigation className="w-3 h-3 text-muted-foreground rotate-180" />}
+              </h1>
+            </div>
+          </div>
+          <div className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-card rounded-xl border border-border shadow-card">
+            <span className="text-sm">{tierCfg.icon}</span>
+            <span className="text-xs font-bold font-nunito" style={{ color: tierCfg.color }}>{rankName}</span>
+          </div>
+        </div>
+
+        {/* Dropdown Profils Famille */}
+        <AnimatePresence>
+          {showProfileDropdown && familyProfiles && familyProfiles.length > 1 && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-40"
+                onClick={() => setShowProfileDropdown(false)}
+              />
+              <motion.div
+                initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                className="absolute top-12 left-0 w-48 bg-card border border-border rounded-xl shadow-xl z-50 py-1 overflow-hidden"
+              >
+                {familyProfiles.map(fp => (
+                  <button
+                    key={fp.id}
+                    onClick={() => {
+                      if (onSelectProfile && fp.id !== profile.id) onSelectProfile(fp);
+                      setShowProfileDropdown(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-muted transition-colors ${fp.id === profile.id ? 'bg-primary/5' : ''}`}
+                  >
+                    <span className="text-lg">{fp.avatarEmoji}</span>
+                    <span className={`font-nunito text-sm ${fp.id === profile.id ? 'font-black text-primary' : 'font-bold'}`}>{fp.pseudo}</span>
+                  </button>
+                ))}
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+      </motion.div>
+
       {/* Tab toggle */}
       <div className="flex bg-muted rounded-2xl p-1 mb-5">
         <button

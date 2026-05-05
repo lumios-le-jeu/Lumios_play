@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Trophy, ChevronRight, ChevronLeft, Plus, Trash2, Search, Users } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { getSocket } from '../../lib/socket';
-import type { CompetitionType, CompetitionFormat } from '../../lib/types';
+import type { CompetitionType, CompetitionFormat, ChildProfile } from '../../lib/types';
 import { PLAYER_COLORS } from '../../lib/types';
 import { createCompetition, isPowerOfTwo, generateEliminationBracket, generateCupPoolMatches } from '../../lib/competition';
 import TournamentBracket from './TournamentBracket';
@@ -11,11 +11,13 @@ import CupFormat from './CupFormat';
 
 interface CompetitionFlowProps {
   onClose: () => void;
+  profile?: ChildProfile;
+  familyProfiles?: ChildProfile[];
 }
 
 type Step = 1 | 2 | 3 | 4 | 'play';
 
-export default function CompetitionFlow({ onClose }: CompetitionFlowProps) {
+export default function CompetitionFlow({ onClose, profile, familyProfiles }: CompetitionFlowProps) {
   const [step, setStep] = useState<Step>(1);
   const [name, setName] = useState('');
   const [type, setType] = useState<CompetitionType>('ranked');
@@ -41,10 +43,15 @@ export default function CompetitionFlow({ onClose }: CompetitionFlowProps) {
     
     socket.on('comp-player-joined', handlePlayerJoined);
     
+    // Si c'est un compte famille, on peut pré-ajouter le créateur s'il n'y est pas
+    if (profile && !players.find(p => p.pseudo === profile.pseudo)) {
+      setPlayers([{ pseudo: profile.pseudo, elo: profile.elo, avatarEmoji: profile.avatarEmoji, id: profile.id }]);
+    }
+
     return () => {
       socket.off('comp-player-joined', handlePlayerJoined);
     };
-  }, [step, compCode]);
+  }, [step, compCode, profile]);
 
   const canGoNext = () => {
     if (step === 1) return name.trim().length >= 2;
@@ -250,6 +257,29 @@ export default function CompetitionFlow({ onClose }: CompetitionFlowProps) {
                     <p className="text-xs text-center text-muted-foreground mb-4">
                       Les joueurs doivent scanner ce code depuis l'onglet Accueil → <strong>Rejoindre un tournoi</strong>
                     </p>
+
+                    {/* Quick add Family Members */}
+                    {familyProfiles && familyProfiles.length > 0 && (
+                      <div className="mb-4">
+                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Ajouter un membre de la famille</p>
+                        <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar">
+                          {familyProfiles.filter(fp => !players.find(p => p.pseudo === fp.pseudo)).map(fp => (
+                            <button
+                              key={fp.id}
+                              onClick={() => setPlayers(prev => [...prev, { pseudo: fp.pseudo, elo: fp.elo, avatarEmoji: fp.avatarEmoji, id: fp.id }])}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-muted rounded-full border border-border hover:bg-primary/10 hover:border-primary/30 transition-colors whitespace-nowrap"
+                            >
+                              <span className="text-sm">{fp.avatarEmoji}</span>
+                              <span className="font-nunito font-bold text-sm">{fp.pseudo}</span>
+                              <Plus className="w-3 h-3 text-muted-foreground ml-1" />
+                            </button>
+                          ))}
+                          {familyProfiles.filter(fp => !players.find(p => p.pseudo === fp.pseudo)).length === 0 && (
+                            <p className="text-xs text-muted-foreground italic px-2 py-1">Tous les membres sont ajoutés</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Player list */}
                     <div className="flex flex-col gap-2 max-h-48 overflow-y-auto mb-3">

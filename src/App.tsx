@@ -299,13 +299,15 @@ export default function App() {
       profile={currentProfile}
       onRefreshProfile={refreshCurrentProfile}
       isGuest={isGuest}
+      familyProfiles={profiles}
+      onSelectProfile={handleProfileSelect}
     />,
     friends: isGuest
       ? <GuestLockScreen onCreateAccount={handleGuestConvert} />
       : <FriendsScreen profile={currentProfile} onRefreshProfile={refreshCurrentProfile} />,
     leaderboard: isGuest
       ? <GuestLockScreen onCreateAccount={handleGuestConvert} />
-      : <LeaderboardScreen profile={currentProfile} onRefreshProfile={refreshCurrentProfile} />,
+      : <LeaderboardScreen profile={currentProfile} onRefreshProfile={refreshCurrentProfile} familyProfiles={profiles} onSelectProfile={handleProfileSelect} />,
     profile: isGuest
       ? <GuestLockScreen onCreateAccount={handleGuestConvert} />
       : <ProfileScreen 

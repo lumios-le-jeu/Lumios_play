@@ -59,13 +59,16 @@ interface PlayScreenProps {
   profile: ChildProfile;
   onRefreshProfile?: () => Promise<void>;
   isGuest?: boolean;
+  familyProfiles?: ChildProfile[];
+  onSelectProfile?: (profile: ChildProfile) => void;
 }
 
-export default function PlayScreen({ profile, onRefreshProfile, isGuest }: PlayScreenProps) {
+export default function PlayScreen({ profile, onRefreshProfile, isGuest, familyProfiles, onSelectProfile }: PlayScreenProps) {
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [nearbyArenas, setNearbyArenas] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showGuestConversion, setShowGuestConversion] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
   const rankName = getRankDisplayName(profile.rankTier, profile.rankStep);
   const tierCfg = getTierConfig(profile.rankTier);
@@ -123,18 +126,66 @@ export default function PlayScreen({ profile, onRefreshProfile, isGuest }: PlayS
   return (
     <div className="screen-wrapper">
       {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} className="mb-4">
+      <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} className="mb-4 relative z-50">
         <div className="flex items-center gap-3 mb-1">
-          <div className="w-9 h-9 gradient-lumios rounded-xl flex items-center justify-center text-lg">{profile.avatarEmoji}</div>
-          <div>
-            <p className="text-xs text-muted-foreground font-medium">Bonjour,</p>
-            <h1 className="font-nunito font-black text-lg leading-tight">{profile.pseudo} 👋</h1>
+          <div 
+            className={`w-9 h-9 gradient-lumios rounded-xl flex items-center justify-center text-lg ${familyProfiles && familyProfiles.length > 1 ? 'cursor-pointer hover:opacity-90' : ''}`}
+            onClick={() => familyProfiles && familyProfiles.length > 1 && setShowProfileDropdown(!showProfileDropdown)}
+          >
+            {profile.avatarEmoji}
+          </div>
+          <div 
+            className={familyProfiles && familyProfiles.length > 1 ? 'cursor-pointer hover:opacity-90 flex items-center gap-1' : ''}
+            onClick={() => familyProfiles && familyProfiles.length > 1 && setShowProfileDropdown(!showProfileDropdown)}
+          >
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Bonjour,</p>
+              <h1 className="font-nunito font-black text-lg leading-tight flex items-center gap-1">
+                {profile.pseudo} 👋
+                {familyProfiles && familyProfiles.length > 1 && <Navigation className="w-3 h-3 text-muted-foreground rotate-180" />}
+              </h1>
+            </div>
           </div>
           <div className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-card rounded-xl border border-border shadow-card">
             <span className="text-sm">{tierCfg.icon}</span>
             <span className="text-xs font-bold font-nunito" style={{ color: tierCfg.color }}>{rankName}</span>
           </div>
         </div>
+
+        {/* Dropdown Profils Famille */}
+        <AnimatePresence>
+          {showProfileDropdown && familyProfiles && familyProfiles.length > 1 && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-40"
+                onClick={() => setShowProfileDropdown(false)}
+              />
+              <motion.div
+                initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                className="absolute top-12 left-0 w-48 bg-card border border-border rounded-xl shadow-xl z-50 py-1 overflow-hidden"
+              >
+                {familyProfiles.map(fp => (
+                  <button
+                    key={fp.id}
+                    onClick={() => {
+                      if (onSelectProfile && fp.id !== profile.id) onSelectProfile(fp);
+                      setShowProfileDropdown(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-muted transition-colors ${fp.id === profile.id ? 'bg-primary/5' : ''}`}
+                  >
+                    <span className="text-lg">{fp.avatarEmoji}</span>
+                    <span className={`font-nunito text-sm ${fp.id === profile.id ? 'font-black text-primary' : 'font-bold'}`}>{fp.pseudo}</span>
+                  </button>
+                ))}
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
       </motion.div>
 
       <h2 className="font-nunito font-black text-lg mb-4 mt-2">Choisissez votre jeu</h2>
@@ -200,7 +251,7 @@ export default function PlayScreen({ profile, onRefreshProfile, isGuest }: PlayS
         {activeModal === 'family'      && <FamilyDuelModal profile={profile} onRefreshProfile={onRefreshProfile} onClose={() => setActiveModal(null)} />}
         {activeModal === 'arena'       && <CreateArenaModal profile={profile} onClose={() => setActiveModal(null)} />}
         {activeModal === 'find'        && <FindGameModal profile={profile} onClose={() => setActiveModal(null)} />}
-        {activeModal === 'competition' && <CompetitionFlow onClose={() => setActiveModal(null)} />}
+        {activeModal === 'competition' && <CompetitionFlow onClose={() => setActiveModal(null)} profile={profile} familyProfiles={familyProfiles} />}
         {activeModal === 'comp-join'   && <JoinCompModal profile={profile} onClose={() => setActiveModal(null)} />}
       </AnimatePresence>
 

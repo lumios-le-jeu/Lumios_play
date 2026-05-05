@@ -306,7 +306,7 @@ export default function FamilyDuelModal({ profile, onClose, onRefreshProfile }: 
               >⚔️</motion.div>
               <div className="text-center">
                 <h4 className="font-nunito font-black text-2xl mb-1">Match en cours !</h4>
-                <p className="text-sm text-muted-foreground">Passez le téléphone et jouez 🍀</p>
+                <p className="text-sm text-muted-foreground">Que le meilleur gagne ! (Psst... tu peux laisser gagner {opponent.pseudo} quand même 🤫)</p>
               </div>
 
               <div className="flex items-center gap-6 p-4 bg-muted rounded-2xl w-full">
@@ -323,7 +323,7 @@ export default function FamilyDuelModal({ profile, onClose, onRefreshProfile }: 
 
               <div className="p-4 bg-primary/5 border border-primary/20 rounded-2xl w-full text-center">
                 <p className="text-xs text-muted-foreground font-semibold">
-                  📱 Passez le téléphone au prochain joueur entre chaque manche
+                  📱 Passez le téléphone en famille, et pas de triche ! (Même si c'est tentant)
                 </p>
               </div>
 
