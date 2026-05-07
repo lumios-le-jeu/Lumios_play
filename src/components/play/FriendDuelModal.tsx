@@ -365,7 +365,20 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
             <motion.div key="setup" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}>
               <p className="text-muted-foreground text-sm mb-5">Affrontez un ami physiquement côte à côte. Toujours en 2 manches gagnantes.</p>
 
-              {/* Mode de jeu sélectionné automatiquement (Compétitif) */}
+              <div className="flex gap-2 bg-muted p-1 rounded-xl mb-4">
+                <button
+                  className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition-all ${matchMode === 'competitive' ? 'bg-white shadow text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  onClick={() => setMatchMode('competitive')}
+                >
+                  🏆 Compétitif
+                </button>
+                <button
+                  className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition-all ${matchMode === 'tournament' ? 'bg-white shadow text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  onClick={() => setMatchMode('tournament')}
+                >
+                  🏅 Tournoi
+                </button>
+              </div>
 
               <div className="flex flex-col gap-3">
                 <button className="btn-primary w-full py-3.5" onClick={() => setStep('qr-host')}><QrCode className="w-5 h-5" /> Afficher mon QR Code</button>
@@ -378,7 +391,7 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
           {step === 'qr-host' && (
             <motion.div key="qr-host" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-4">
               <div className="px-3 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-700">
-                🏆 Compétitif
+                {matchMode === 'tournament' ? '🏅 Tournoi' : '🏆 Compétitif'}
               </div>
               {/* #14 — Ne pas afficher le QR tant que le code est vide */}
               {gameCode ? (
@@ -448,7 +461,7 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
           {step === 'matched' && opponent && (
             <motion.div key="matched" initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-5 py-2">
               <div className="px-3 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-700">
-                🏆 Compétitif
+                {matchMode === 'tournament' ? '🏅 Tournoi' : '🏆 Compétitif'}
               </div>
               <div className="flex items-center gap-6 p-4 bg-muted rounded-2xl w-full">
                 <div className="flex-1 text-center">
@@ -517,7 +530,7 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
 
               {limitReached && (
                 <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-xs font-bold text-center w-full">
-                  ⚠️ Limite de {MAX_COMPETITIVE_DUELS_PER_DAY} défis compétitifs/jour atteinte contre ce joueur !
+                  ⚠️ Limite de {MAX_COMPETITIVE_DUELS_PER_DAY} défis atteints contre ce joueur !
                 </div>
               )}
 
@@ -632,7 +645,7 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
                     {result.winnerId === profile.id && <Trophy className="w-3 h-3 text-emerald-500" />}
                   </div>
                   <div className="text-right">
-                    {matchMode === 'competitive' && (
+                    {(matchMode === 'competitive' || matchMode === 'tournament') && (
                       <span className={`font-black font-nunito text-sm ${
                         (isHost ? result.stepChangeP1 : result.stepChangeP2) > 0 ? 'text-emerald-500' :
                         (isHost ? result.stepChangeP1 : result.stepChangeP2) < 0 ? 'text-rose-500' : 'text-muted-foreground'
@@ -655,7 +668,7 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
                     {result.winnerId === opponent.id && <Trophy className="w-3 h-3 text-emerald-500" />}
                   </div>
                   <div className="text-right">
-                    {matchMode === 'competitive' && (
+                    {(matchMode === 'competitive' || matchMode === 'tournament') && (
                       <span className={`font-black font-nunito text-sm ${
                         (isHost ? result.stepChangeP2 : result.stepChangeP1) > 0 ? 'text-emerald-500' :
                         (isHost ? result.stepChangeP2 : result.stepChangeP1) < 0 ? 'text-rose-500' : 'text-muted-foreground'
@@ -674,23 +687,29 @@ export default function FriendDuelModal({ profile, onClose, onRefreshProfile }: 
 
               {/* #3 — Suggestion d'ajout en ami */}
               {isFriendAlready === false && opponent && (
-                <motion.button
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  onClick={async () => {
-                    if (friendAdded) return;
-                    const ok = await addFriend(profile.id, opponent.id);
-                    if (ok) setFriendAdded(true);
-                  }}
-                  disabled={friendAdded}
-                  className={`w-full py-3 rounded-2xl border-2 font-nunito font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-                    friendAdded
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
-                      : 'border-primary/30 bg-primary/5 text-primary hover:bg-primary/10'
-                  }`}
-                >
-                  {friendAdded ? '✅ Demande envoyée !' : `👥 Ajouter ${opponent.pseudo} en ami`}
-                </motion.button>
+                profile.id.startsWith('guest-') || opponent.id.startsWith('guest-') ? (
+                  <div className="w-full py-3 rounded-2xl border-2 border-muted bg-muted text-muted-foreground font-nunito font-bold text-sm flex items-center justify-center gap-2">
+                    🔒 Ajouter {opponent.pseudo} en ami (Mode Invité)
+                  </div>
+                ) : (
+                  <motion.button
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    onClick={async () => {
+                      if (friendAdded) return;
+                      const ok = await addFriend(profile.id, opponent.id);
+                      if (ok) setFriendAdded(true);
+                    }}
+                    disabled={friendAdded}
+                    className={`w-full py-3 rounded-2xl border-2 font-nunito font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                      friendAdded
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
+                        : 'border-primary/30 bg-primary/5 text-primary hover:bg-primary/10'
+                    }`}
+                  >
+                    {friendAdded ? '✅ Demande envoyée !' : `👥 Ajouter ${opponent.pseudo} en ami`}
+                  </motion.button>
+                )
               )}
 
               <button className="btn-primary w-full py-4 font-nunito font-black" onClick={handleClose}>Terminer</button>

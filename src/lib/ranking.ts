@@ -287,4 +287,4 @@ export function getNextRankName(rankStep: number): string | null {
 }
 
 /** Limite quotidienne de défis compétitifs contre le même adversaire */
-export const MAX_COMPETITIVE_DUELS_PER_DAY = 3;
+export const MAX_COMPETITIVE_DUELS_PER_DAY = 1;

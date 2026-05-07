@@ -120,7 +120,7 @@ export interface GuestProfile {
 
 // ─── Match Types ────────────────────────────────────────────────────────────────
 
-export type MatchMode = 'competitive' | 'friendly';
+export type MatchMode = 'competitive' | 'friendly' | 'tournament';
 export type ScoreDetail = '2-0' | '0-2' | '2-1' | '1-2';
 
 export interface Match {

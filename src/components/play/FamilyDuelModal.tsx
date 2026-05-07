@@ -285,7 +285,20 @@ export default function FamilyDuelModal({ profile, onClose, onRefreshProfile }: 
                 </div>
               </div>
 
-              {/* Mode de jeu par défaut (Compétitif) */}
+              <div className="flex gap-2 bg-muted p-1 rounded-xl w-full mb-4">
+                <button
+                  className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition-all ${matchMode === 'competitive' ? 'bg-white shadow text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  onClick={() => setMatchMode('competitive')}
+                >
+                  🏆 Compétitif
+                </button>
+                <button
+                  className={`flex-1 py-2.5 text-xs font-bold rounded-lg transition-all ${matchMode === 'tournament' ? 'bg-white shadow text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  onClick={() => setMatchMode('tournament')}
+                >
+                  🏅 Tournoi
+                </button>
+              </div>
 
               <button
                 className="btn-primary w-full py-4 font-nunito font-black text-base"
@@ -347,7 +360,7 @@ export default function FamilyDuelModal({ profile, onClose, onRefreshProfile }: 
 
               {limitReached && (
                 <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-xs font-bold text-center w-full">
-                  ⚠️ Limite de {MAX_COMPETITIVE_DUELS_PER_DAY} défis compétitifs/jour atteinte contre ce joueur !
+                  ⚠️ Limite de {MAX_COMPETITIVE_DUELS_PER_DAY} défis atteints contre ce joueur !
                 </div>
               )}
 
@@ -429,7 +442,7 @@ export default function FamilyDuelModal({ profile, onClose, onRefreshProfile }: 
                     {result.winnerId === profile.id && <Trophy className="w-3 h-3 text-emerald-500" />}
                   </div>
                   <div className="text-right">
-                    {matchMode === 'competitive' && (
+                    {(matchMode === 'competitive' || matchMode === 'tournament') && (
                       <span className={`font-black font-nunito text-sm ${result.stepChangeP1 > 0 ? 'text-emerald-500' : result.stepChangeP1 < 0 ? 'text-rose-500' : 'text-muted-foreground'}`}>
                         {formatStepChange(result.stepChangeP1)}
                       </span>
@@ -448,7 +461,7 @@ export default function FamilyDuelModal({ profile, onClose, onRefreshProfile }: 
                     {result.winnerId === opponent.id && <Trophy className="w-3 h-3 text-emerald-500" />}
                   </div>
                   <div className="text-right">
-                    {matchMode === 'competitive' && (
+                    {(matchMode === 'competitive' || matchMode === 'tournament') && (
                       <span className={`font-black font-nunito text-sm ${result.stepChangeP2 > 0 ? 'text-emerald-500' : result.stepChangeP2 < 0 ? 'text-rose-500' : 'text-muted-foreground'}`}>
                         {formatStepChange(result.stepChangeP2)}
                       </span>

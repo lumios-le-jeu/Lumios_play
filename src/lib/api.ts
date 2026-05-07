@@ -235,7 +235,7 @@ export async function submitMatchResult(match: MatchResult): Promise<{ data: any
       score: match.score,
       score_detail: match.scoreDetail,
       match_mode: match.matchMode,
-      type: match.matchMode === 'competitive' ? 'ranked' : 'friendly',
+      type: (match.matchMode === 'competitive' || match.matchMode === 'tournament') ? 'ranked' : 'friendly',
       format: 'BO3',
       step_change_p1: match.stepChangeP1,
       step_change_p2: match.stepChangeP2,
