@@ -334,13 +334,19 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
                             <span className="text-[10px] font-semibold" style={{ color: tierCfg.color }}>{rankName}</span>
                           </div>
                         </div>
-                        <button
-                          onClick={() => !isRequested && !isAdding && handleAddFriend(user.id)}
-                          disabled={isRequested || isAdding === user.id}
-                          className={`py-1.5 px-3 text-xs rounded-xl font-nunito font-bold flex items-center gap-1 transition-all ${isRequested ? 'bg-muted text-muted-foreground' : 'btn-primary'}`}
-                        >
-                          {isAdding === user.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : isRequested ? <><Check className="w-3.5 h-3.5" /> Envoyé</> : <><UserPlus className="w-3.5 h-3.5" /> Ajouter</>}
-                        </button>
+                        {profile.id.startsWith('guest-') || user.id.startsWith('guest-') ? (
+                          <div className="py-1.5 px-3 text-xs rounded-xl font-nunito font-bold flex items-center gap-1 bg-muted text-muted-foreground cursor-not-allowed">
+                            🔒 Invité
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => !isRequested && !isAdding && handleAddFriend(user.id)}
+                            disabled={isRequested || isAdding === user.id}
+                            className={`py-1.5 px-3 text-xs rounded-xl font-nunito font-bold flex items-center gap-1 transition-all ${isRequested ? 'bg-muted text-muted-foreground' : 'btn-primary'}`}
+                          >
+                            {isAdding === user.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : isRequested ? <><Check className="w-3.5 h-3.5" /> Envoyé</> : <><UserPlus className="w-3.5 h-3.5" /> Ajouter</>}
+                          </button>
+                        )}
                       </div>
                     );
                   })}
@@ -410,13 +416,19 @@ export default function FriendsScreen({ profile, onRefreshProfile }: FriendsScre
                       <span className="text-[10px] font-semibold" style={{ color: tierCfg.color }}>{rankName}</span>
                     </div>
                   </div>
-                  <button
-                    onClick={() => !isRequested && !isAdding && handleAddFriend(user.id)}
-                    disabled={isRequested || isAdding === user.id}
-                    className={`py-1.5 px-3 text-xs rounded-xl font-nunito font-bold flex items-center gap-1 transition-all ${isRequested ? 'bg-muted text-muted-foreground' : 'btn-primary'}`}
-                  >
-                    {isAdding === user.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : isRequested ? <><Check className="w-3.5 h-3.5" /> Envoyé</> : <><UserPlus className="w-3.5 h-3.5" /> Ajouter</>}
-                  </button>
+                  {profile.id.startsWith('guest-') || user.id.startsWith('guest-') ? (
+                    <div className="py-1.5 px-3 text-xs rounded-xl font-nunito font-bold flex items-center gap-1 bg-muted text-muted-foreground cursor-not-allowed">
+                      🔒 Invité
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => !isRequested && !isAdding && handleAddFriend(user.id)}
+                      disabled={isRequested || isAdding === user.id}
+                      className={`py-1.5 px-3 text-xs rounded-xl font-nunito font-bold flex items-center gap-1 transition-all ${isRequested ? 'bg-muted text-muted-foreground' : 'btn-primary'}`}
+                    >
+                      {isAdding === user.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : isRequested ? <><Check className="w-3.5 h-3.5" /> Envoyé</> : <><UserPlus className="w-3.5 h-3.5" /> Ajouter</>}
+                    </button>
+                  )}
                 </div>
               );
             })}
